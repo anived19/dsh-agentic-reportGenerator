@@ -22,15 +22,15 @@ logger = logging.getLogger("main")
 
 
 def generate_report(user_query: str, run_aml: bool = False) -> None:
-    print(f"\n> Request: {user_query}\n")
+    print(f"\n> Request: {user_query}\n", flush=True)
 
     # Natural language AML check
     query_lower = user_query.lower()
     if not run_aml and any(term in query_lower for term in ("aml", "sanctions", "compliance", "abc risk", "debarment")):
         run_aml = True
-        print("      Note: Natural language AML screening intent detected -> enabling Layer 2 compliance screening.")
+        print("      Note: Natural language AML screening intent detected -> enabling Layer 2 compliance screening.", flush=True)
 
-    print("[1/3] Identifying initial company reference, report type, and editorial goal...")
+    print("[1/3] Identifying initial company reference, report type, and editorial goal...", flush=True)
     try:
         company_reference, report_type, editorial_goal = extract_intake_priors(user_query)
     except Exception as exc:
@@ -39,11 +39,11 @@ def generate_report(user_query: str, run_aml: bool = False) -> None:
         report_type = detect_report_type(user_query)
         editorial_goal = extract_editorial_goal(user_query)
 
-    print(f"      -> Prior entity: {company_reference or 'Unspecified'}  |  Report type: {report_type.value}")
+    print(f"      -> Prior entity: {company_reference or 'Unspecified'}  |  Report type: {report_type.value}", flush=True)
     if editorial_goal:
-        print(f"      -> Editorial goal: {editorial_goal}")
+        print(f"      -> Editorial goal: {editorial_goal}", flush=True)
 
-    print("[2/3] Executing DSH (DeepSeek Harness) agentic orchestrator...")
+    print("[2/3] Executing DSH (DeepSeek Harness) agentic orchestrator...", flush=True)
     agent_state, report = run_dsh_orchestrator(
         user_query=user_query,
         initial_company_ref=company_reference,
@@ -52,19 +52,19 @@ def generate_report(user_query: str, run_aml: bool = False) -> None:
         run_aml=run_aml,
     )
 
-    print(f"      -> Resolved ticker: {report.ticker} ({report.company_name})")
-    print(f"      -> Completed in {agent_state.turn} turn(s) with {len(agent_state.tool_log)} tool call(s)")
+    print(f"      -> Resolved ticker: {report.ticker} ({report.company_name})", flush=True)
+    print(f"      -> Completed in {agent_state.turn} turn(s) with {len(agent_state.tool_log)} tool call(s)", flush=True)
     print(f"      -> Telemetry: {agent_state.telemetry.gemini_calls} Gemini calls, "
           f"{agent_state.telemetry.tavily_calls}/{agent_state.telemetry.tavily_calls_budget} Tavily calls, "
-          f"{agent_state.telemetry.wall_clock_seconds}s wall clock")
+          f"{agent_state.telemetry.wall_clock_seconds}s wall clock", flush=True)
 
     if report.report_spec:
         print(f"      -> ReportSpec: {len(report.report_spec.sections)} sections configured. "
-              f"Rationale: {report.report_spec.rationale}")
+              f"Rationale: {report.report_spec.rationale}", flush=True)
 
-    print("[3/3] Rendering PDF...")
+    print("[3/3] Rendering PDF...", flush=True)
     pdf_path = compile_pdf(report)
-    print(f"\nDone. Report saved to: {pdf_path}\n")
+    print(f"\nDone. Report saved to: {pdf_path}\n", flush=True)
 
 
 def main() -> None:

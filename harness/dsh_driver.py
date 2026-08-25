@@ -1,21 +1,24 @@
 """
-True DSH (DeepSeek Harness) Driver for Financial Report Generator.
+True DSH (DeepSeek Harness) Autonomous Agent Driver.
 
-DSH is the autonomous Agent Orchestration & Runtime Harness:
-  - DSH owns the ReAct reasoning loop (Perceive -> Reason -> Act -> Observe).
-  - DSH drives tool execution dynamically via the Model Context Protocol (MCP) server (stdio).
-  - DSH executes the Google Gemini model via its built-in pi-ai provider route.
-  - Chief Editor synthesis remains a direct single-shot synthesis call.
+Orchestrates Stage 2 (Agentic Research) by spawning DeepSeek Harness with Cordis
+composition and the stateful Finoscale MCP tool server over stdio.
+
+DSH owns the entire multi-turn ReAct reasoning loop (Perceive -> Reason -> Act -> Observe).
+Stage 3 (Synthesis) reads the empirical state gathered by DSH directly from the MCP session.
+No data is ever fetched in parallel outside of DSH's MCP tool dispatches.
 """
 from __future__ import annotations
 
 import json
 import logging
 import os
+import queue
 import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from datetime import date
 from pathlib import Path
@@ -29,6 +32,7 @@ from schemas import (
     AMLFinding,
     AMLScreeningResult,
     AMLSeverity,
+    CitedClaim,
     FinalReport,
     MarketMetrics,
     ReportSpec,
@@ -38,21 +42,21 @@ from schemas import (
     SentimentFindings,
     SentimentLabel,
     ToolCallRecord,
+    ValidationResult,
 )
 from tools.finance_tools import assemble_market_metrics
-from tools.ticker_resolver import resolve_entity
 
 logger = logging.getLogger(__name__)
 
 
 def ensure_dsh_environment() -> None:
-    """Ensure DSH configuration and settings exist for Gemini provider routing."""
+    """Ensure DSH global configuration exists for Gemini provider routing."""
     dsh_dir = Path.home() / ".dsh"
     dsh_dir.mkdir(parents=True, exist_ok=True)
     settings_file = dsh_dir / "settings.yaml"
 
     settings_content = (
-        "model: google:gemini-3.6-flash\n"
+        "model: google:gemini-3.5-flash-lite\n"
         "llm-pi-ai:\n"
         "  providers:\n"
         "    google: {}\n"
@@ -61,8 +65,8 @@ def ensure_dsh_environment() -> None:
 
 
 def default_ask_user(question: str, options: list[str]) -> str:
-    """Pause execution and prompt the user in the terminal for disambiguation."""
-    print(f"\n[INTERACTIVE PAUSE] {question}")
+    """Prompt the user on the real OS terminal for interactive disambiguation."""
+    print(f"\n[INTERACTIVE DISAMBIGUATION] {question}")
     for idx, opt in enumerate(options, 1):
         print(f"  [{idx}] {opt}")
     while True:
@@ -82,8 +86,28 @@ def default_ask_user(question: str, options: list[str]) -> str:
                     return opt
             print(f"Invalid choice '{choice}'. Please enter a number between 1 and {len(options)}.")
         except (EOFError, KeyboardInterrupt):
-            print(f"\nDefaulting to first option: {options[0]}")
-            return options[0]
+            print(f"\nDefaulting to first option: {options[0] if options else 'None'}")
+            return options[0] if options else ""
+
+
+def _find_npx_executable() -> str:
+    """Locate the npx command on the system, resolving .cmd on Windows."""
+    if sys.platform == "win32":
+        cmd = shutil.which("npx.cmd") or shutil.which("npx")
+        if cmd:
+            return cmd
+        # Common npm global path fallback
+        appdata_npm = Path(os.environ.get("APPDATA", "")) / "npm" / "npx.cmd"
+        if appdata_npm.exists():
+            return str(appdata_npm)
+        program_files_npm = Path(r"C:\Program Files\nodejs\npx.cmd")
+        if program_files_npm.exists():
+            return str(program_files_npm)
+    else:
+        cmd = shutil.which("npx")
+        if cmd:
+            return cmd
+    return "npx"
 
 
 def run_dsh_orchestrator(
@@ -95,196 +119,235 @@ def run_dsh_orchestrator(
     interactive_fn: Optional[Callable[[str, list[str]], str]] = None,
 ) -> tuple[AgentState, FinalReport]:
     """
-    Drive the report generation pipeline using DeepSeek Harness as the core agent runtime.
+    Drive the report generation pipeline using DeepSeek Harness as the autonomous agent runtime.
     """
     start_time = time.time()
     ensure_dsh_environment()
 
-    # 1. Initialize Agent State
-    telemetry = RunTelemetry(tavily_calls_budget=5)
-    state = AgentState(
-        user_query=user_query,
-        company_reference=initial_company_ref,
-        report_type=report_type,
-        editorial_goal=editorial_goal or "Standard Comprehensive Financial Analysis",
-        run_aml=run_aml,
-        telemetry=telemetry,
-        status=AgentStatus.RUNNING,
-    )
+    # 1. Initialize Session Directory & Metadata
+    session_id = f"dsh_{int(time.time() * 1000)}"
+    session_dir = settings.cache_dir / "sessions" / session_id
+    session_dir.mkdir(parents=True, exist_ok=True)
 
-    # 2. Entity Disambiguation (Human-in-the-Loop)
-    ask_fn = interactive_fn or default_ask_user
-    resolved_ticker = "TCS.NS"
-    resolved_name = "Tata Consultancy Services Limited"
+    # Set active session pointer
+    active_session_file = settings.cache_dir / "sessions" / "active_session.json"
+    active_session_file.write_text(json.dumps({"active_session_id": session_id}), encoding="utf-8")
 
-    query_to_resolve = initial_company_ref or user_query
-    candidates = resolve_entity(query_to_resolve)
+    init_payload = {
+        "session_id": session_id,
+        "user_query": user_query,
+        "company_reference": initial_company_ref,
+        "report_type": report_type.value,
+        "editorial_goal": editorial_goal or "Standard Comprehensive Financial Analysis",
+        "run_aml": run_aml,
+    }
+    (session_dir / "session_init.json").write_text(json.dumps(init_payload, indent=2), encoding="utf-8")
 
-    if len(candidates) == 1:
-        resolved_ticker = candidates[0]["ticker"]
-        resolved_name = candidates[0]["name"]
-        print(f"  [Entity Resolved] {resolved_name} ({resolved_ticker})")
-    elif len(candidates) > 1:
-        opts = [f"{c['name']} ({c['ticker']})" for c in candidates]
-        chosen = ask_fn(f"The query '{query_to_resolve}' matches multiple companies. Please choose:", opts)
-        for c in candidates:
-            if c["ticker"] in chosen or c["name"] in chosen:
-                resolved_ticker = c["ticker"]
-                resolved_name = c["name"]
-                break
-        else:
-            resolved_ticker = candidates[0]["ticker"]
-            resolved_name = candidates[0]["name"]
-        print(f"  [Disambiguated] {resolved_name} ({resolved_ticker})")
-    else:
-        # Fallback to direct extraction
-        match = re.search(r"([A-Z0-9]+(?:\.NS|\.BO)?)", query_to_resolve, re.IGNORECASE)
-        if match:
-            resolved_ticker = match.group(1).upper()
-            if not resolved_ticker.endswith(".NS") and not resolved_ticker.endswith(".BO"):
-                resolved_ticker += ".NS"
-        print(f"  [Direct Ticker] {resolved_ticker}")
-
-    state.ticker = resolved_ticker
-    state.company_name = resolved_name
-
-    # 3. Build Task Prompt for DeepSeek Harness
+    # 2. Build DSH Task Prompt
     task_prompt = (
-        f"You are the financial research agent for {resolved_name} ({resolved_ticker}).\n"
+        f"User Request: '{user_query}'\n"
+        f"Detected Entity Prior: '{initial_company_ref or 'Unspecified'}'\n"
         f"Report Type: {report_type.value}\n"
-        f"Editorial Goal: {state.editorial_goal}\n"
-        f"AML Screening Enabled: {run_aml}\n\n"
-        f"INSTRUCTIONS:\n"
-        f"1. Use the MCP tools to gather all required financial data for ticker '{resolved_ticker}':\n"
+        f"Editorial Goal: {editorial_goal or 'Standard Comprehensive Financial Analysis'}\n"
+        f"AML Compliance Screening: {run_aml}\n\n"
+        f"EXECUTION INSTRUCTIONS:\n"
+        f"1. If company/ticker is not yet resolved, call mcp__finoscale__resolve_entity.\n"
+        f"   If >1 candidate is returned, immediately call mcp__finoscale__ask_user.\n"
+        f"2. Dynamically fetch required market data categories using MCP tools:\n"
         f"   - mcp__finoscale__get_price_snapshot\n"
         f"   - mcp__finoscale__get_valuation_multiples\n"
         f"   - mcp__finoscale__get_fundamentals\n"
         f"   - mcp__finoscale__get_quarterly_financials\n"
         f"   - mcp__finoscale__get_technicals\n"
         f"   - mcp__finoscale__get_ownership\n"
-        f"   - mcp__finoscale__search_web_news\n"
+        f"   - mcp__finoscale__compute_custom_financial_metric (if ad-hoc formulas needed)\n"
+        f"3. Call mcp__finoscale__search_web_news for live sentiment (max 3-5 searches).\n"
     )
     if run_aml:
         task_prompt += (
-            f"2. Run compliance screening for '{resolved_name}':\n"
+            f"4. Run compliance screening:\n"
             f"   - mcp__finoscale__run_structured_aml_sweep\n"
             f"   - mcp__finoscale__search_adverse_media\n"
         )
     task_prompt += (
-        f"\n3. Reason carefully about findings, market sentiment, valuation, and risks.\n"
-        f"Output a summary of your research findings."
+        f"5. Call mcp__finoscale__reflect_on_progress to summarize gathered data.\n"
+        f"6. Call mcp__finoscale__validate_data. Verify requirements are satisfied.\n"
+        f"7. Call mcp__finoscale__plan_report_format with a tailored ReportSpec (max 5-7 sections).\n"
+        f"8. Call mcp__finoscale__finalize_report to complete your execution."
     )
 
-    # 4. Execute DeepSeek Harness Runtime
-    print(f"\n[DSH Harness] Spawning DeepSeek Harness runtime with Cordis composition...")
-    print(f"  -> Model Provider: Google Gemini 3.6 Flash (via pi-ai adapter)")
-    print(f"  -> Tools: Finoscale MCP tool server (stdio)")
-
-    # Set up child process environment
+    # 3. Setup Process Environment
     env = os.environ.copy()
+    env["FINOSCALE_SESSION_ID"] = session_id
+    env["DSH_SESSION_ID"] = session_id
     env["GEMINI_API_KEY"] = settings.gemini_api_key
     env["GOOGLE_API_KEY"] = settings.gemini_api_key
     env["TAVILY_API_KEY"] = settings.tavily_api_key
     env["DSH_PERMISSION_MODE"] = "danger-full-access"
 
+    npx_bin = _find_npx_executable()
     cordis_path = Path("cordis.yml").resolve()
-    cmd = ["npx", "@deepseek-ai/dsh", "--profile", "headless", "--patch", str(cordis_path), task_prompt]
+    cmd = [npx_bin, "@deepseek-ai/dsh", "--profile", "headless", "--patch", str(cordis_path), task_prompt]
 
-    dsh_output_text = ""
-    try:
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            env=env,
-            shell=True,
-        )
+    print(f"\n[DSH Harness] Spawning DeepSeek Harness Agent Runtime (Session: {session_id})...")
+    print(f"  -> Model Route: google:gemini-3.5-flash-lite (via @deepseek-ai/dsh-llm-pi-ai)")
+    print(f"  -> Tools: Finoscale MCP stdio server (@deepseek-ai/dsh-mcp-client)")
+    print(f"  -> ReAct Loop: Autonomous multi-turn reasoning owned by DSH\n")
 
+    # 4. Execute DSH Subprocess with Real-Time Output & IPC ask_user Monitor
+    ask_fn = interactive_fn or default_ask_user
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        env=env,
+        shell=False,
+    )
+
+    # Background monitoring thread for ask_user IPC
+    stop_monitor = threading.Event()
+
+    def _monitor_ask_user():
+        pending_file = session_dir / "ask_user_pending.json"
+        response_file = session_dir / "ask_user_response.json"
+        while not stop_monitor.is_set():
+            if pending_file.exists():
+                try:
+                    p_data = json.loads(pending_file.read_text(encoding="utf-8"))
+                    q_text = p_data.get("question", "Disambiguate entity:")
+                    opts = p_data.get("options", [])
+                    choice = ask_fn(q_text, opts)
+                    response_file.write_text(json.dumps({"selected": choice}), encoding="utf-8")
+                except Exception as exc:
+                    logger.warning("Error handling ask_user IPC: %s", exc)
+            time.sleep(0.1)
+
+    monitor_thread = threading.Thread(target=_monitor_ask_user, daemon=True)
+    monitor_thread.start()
+
+    # Stream DSH output live to console
+    dsh_stdout_lines: list[str] = []
+    if proc.stdout:
         for line in iter(proc.stdout.readline, ""):
-            print(f"  [DSH] {line.rstrip()}")
-            dsh_output_text += line
+            line_str = line.rstrip()
+            print(f"  [DSH] {line_str}", flush=True)
+            dsh_stdout_lines.append(line_str)
+        proc.stdout.close()
 
-        proc.wait()
-        state.telemetry.gemini_calls += 1
-    except Exception as exc:
-        logger.warning("DSH headless subprocess execution error: %s", exc)
+    proc.wait()
+    stop_monitor.set()
+    monitor_thread.join(timeout=1.0)
 
-    # 5. Fetch Ground Truth Data from MCP tools for Synthesis
-    print("\n[MCP Server] Assembling verified deterministic market metrics...")
-    from tools.finance_tools import (
-        get_fundamentals,
-        get_ownership,
-        get_price_snapshot,
-        get_quarterly_financials,
-        get_technicals,
-        get_valuation_multiples,
-    )
-    from tools.search_tools import search_web_news
+    # 5. Read Final Session State Output by MCP Server
+    final_file = session_dir / "final_session.json"
+    state_file = session_dir / "session_state.json"
 
-    market_data: dict[str, Any] = {}
-    market_data.update(get_price_snapshot(resolved_ticker))
-    market_data.update(get_valuation_multiples(resolved_ticker))
-    market_data.update(get_fundamentals(resolved_ticker))
-    market_data.update({"quarterly_financials": get_quarterly_financials(resolved_ticker)})
-    market_data.update(get_technicals(resolved_ticker))
-    market_data.update(get_ownership(resolved_ticker))
+    session_payload: Optional[dict[str, Any]] = None
+    if final_file.exists():
+        try:
+            session_payload = json.loads(final_file.read_text(encoding="utf-8"))
+        except Exception as exc:
+            logger.warning("Failed to parse final_session.json: %s", exc)
+    elif state_file.exists():
+        try:
+            session_payload = json.loads(state_file.read_text(encoding="utf-8"))
+        except Exception as exc:
+            logger.warning("Failed to parse session_state.json: %s", exc)
 
-    market_metrics = assemble_market_metrics(resolved_ticker, market_data)
-
-    # Fetch news sentiment
-    news_res = search_web_news(f"{resolved_name} stock earnings outlook", ticker=resolved_ticker, depth="basic")
-    state.telemetry.tavily_calls += 1
-
-    catalysts = []
-    risks = []
-    if isinstance(news_res, dict) and "articles" in news_res:
-        for art in news_res.get("articles", [])[:3]:
-            title = art.get("title", "")
-            url = art.get("url", "")
-            if title and url:
-                catalysts.append(CitedClaim(claim=title, source_url=url))
-
-    sentiment_findings = SentimentFindings(
-        overall_sentiment=SentimentLabel.NEUTRAL,
-        sentiment_summary=f"Recent market analysis and news coverage for {resolved_name}.",
-        key_catalysts=catalysts,
-        key_risks=risks,
-    )
-    state.sentiment_findings = sentiment_findings
-
-    # Run AML if requested
-    aml_result = None
-    if run_aml:
-        from tools.aml_tools import run_structured_aml_sweep
-        aml_dict = run_structured_aml_sweep(resolved_name, ticker=resolved_ticker)
-        findings = [AMLFinding(**f) for f in aml_dict.get("findings", [])]
-        aml_result = AMLScreeningResult(
-            entity_name=resolved_name,
-            jurisdiction_risk=aml_dict.get("jurisdiction_risk", "Low"),
-            findings=findings,
-            sources_checked=aml_dict.get("sources_checked", []),
+    if not session_payload:
+        raise RuntimeError(
+            f"DSH execution failed: No session state was written to {session_dir}. "
+            f"DSH exit code: {proc.returncode}"
         )
-        state.aml_result = aml_result
 
-    # 6. Chief Editor Synthesis (Single-Shot)
-    print("[Chief Editor] Synthesizing verified research report...")
+    # 6. Reconstruct AgentState from Empirical DSH Data
+    state_status = AgentStatus(session_payload.get("status", "running"))
+    if state_status != AgentStatus.DONE and proc.returncode != 0:
+        raise RuntimeError(
+            f"DSH session did not complete with finalize_report() (status: {state_status.value}, exit: {proc.returncode})"
+        )
+
+    market_data = session_payload.get("market_data", {})
+    ticker = session_payload.get("ticker") or initial_company_ref or "TCS.NS"
+    company_name = session_payload.get("company_name") or market_data.get("company_name") or ticker
+
+    # Reconstruct ReportSpec
+    report_spec = None
+    if session_payload.get("report_spec"):
+        try:
+            report_spec = ReportSpec.model_validate(session_payload["report_spec"])
+        except Exception:
+            pass
+
+    # Reconstruct SentimentFindings
+    sentiment_findings = None
+    if session_payload.get("sentiment_findings"):
+        try:
+            sentiment_findings = SentimentFindings.model_validate(session_payload["sentiment_findings"])
+        except Exception:
+            pass
+    if not sentiment_findings:
+        sentiment_findings = SentimentFindings(
+            overall_sentiment=SentimentLabel.NEUTRAL,
+            sentiment_summary=f"Market research analysis for {company_name}.",
+            key_catalysts=[],
+            key_risks=[],
+        )
+
+    # Reconstruct AMLScreeningResult
+    aml_result = None
+    if session_payload.get("aml_result"):
+        try:
+            aml_result = AMLScreeningResult.model_validate(session_payload["aml_result"])
+        except Exception:
+            pass
+
+    # Reconstruct ToolLog & Telemetry
+    tool_log = [ToolCallRecord.model_validate(t) for t in session_payload.get("tool_log", [])]
+    telemetry = RunTelemetry.model_validate(session_payload.get("telemetry", {}))
+    telemetry.wall_clock_seconds = round(time.time() - start_time, 2)
+
+    state = AgentState(
+        user_query=user_query,
+        company_reference=initial_company_ref,
+        ticker=ticker,
+        company_name=company_name,
+        report_type=report_type,
+        editorial_goal=editorial_goal or session_payload.get("editorial_goal", "Standard Comprehensive Financial Analysis"),
+        run_aml=run_aml,
+        market_data=market_data,
+        custom_metrics=session_payload.get("custom_metrics", {}),
+        sentiment_findings=sentiment_findings,
+        aml_result=aml_result,
+        report_spec=report_spec,
+        tool_log=tool_log,
+        telemetry=telemetry,
+        status=AgentStatus.DONE,
+        turn=session_payload.get("turn", 1),
+    )
+
+    # 7. Assemble Grounded MarketMetrics from DSH Data (Zero Re-Fetching)
+    market_metrics = assemble_market_metrics(ticker, market_data)
+
+    # 8. Stage 3: Chief Editor Synthesis (Single-Shot Grounded Call)
+    print("\n[Chief Editor] Synthesizing final research report from DSH empirical findings...")
     markdown_body = run_chief_editor(
         market_metrics=market_metrics,
         sentiment_findings=sentiment_findings,
         report_type=report_type,
-        report_spec=None,
+        report_spec=report_spec,
         editorial_goal=state.editorial_goal,
-        aml_result=aml_result,
+        aml_result=aml_result if run_aml else None,
     )
-    state.telemetry.gemini_calls += 1
+    telemetry.gemini_calls += 1
 
     if run_aml and aml_result:
         aml_md = render_aml_markdown(aml_result)
         markdown_body = markdown_body + "\n\n" + aml_md
 
-    # 7. Assemble KPI cards
+    # 9. KPI Cards Assembly
     kpi_cards: list[dict[str, str]] = []
     if market_metrics.current_price_formatted:
         kpi_cards.append({"label": "Current Price", "value": market_metrics.current_price_formatted, "note": "Market close"})
@@ -294,33 +357,53 @@ def run_dsh_orchestrator(
         kpi_cards.append({"label": "P/E Ratio", "value": market_metrics.pe_ratio_formatted, "note": "TTM multiple"})
     if market_metrics.roe_formatted:
         kpi_cards.append({"label": "Return on Equity", "value": market_metrics.roe_formatted, "note": "Profitability"})
-
-    state.status = AgentStatus.DONE
-    state.turn = 1
-    state.telemetry.wall_clock_seconds = round(time.time() - start_time, 2)
+    for cm_name, cm_val in state.custom_metrics.items():
+        if isinstance(cm_val, dict) and cm_val.get("formatted_value") and cm_val.get("status") == "ok":
+            kpi_cards.append({
+                "label": cm_name.replace("_", " ").title(),
+                "value": str(cm_val["formatted_value"]),
+                "note": "Custom Metric",
+            })
 
     final_report = FinalReport(
-        ticker=resolved_ticker,
-        company_name=resolved_name,
+        ticker=ticker,
+        company_name=company_name,
         report_type=report_type,
         editorial_goal=state.editorial_goal,
         markdown_body=markdown_body,
         market_metrics=market_metrics,
         sentiment_findings=sentiment_findings,
         aml_result=aml_result,
-        report_spec=None,
-        telemetry=state.telemetry,
+        report_spec=report_spec,
+        telemetry=telemetry,
         kpi_cards=kpi_cards[:6],
     )
 
+    # 10. Write Trace JSON File
+    try:
+        settings.output_dir.mkdir(parents=True, exist_ok=True)
+        ticker_slug = ticker.replace(".", "_").replace("/", "_")
+        date_slug = date.today().isoformat()
+        trace_path = settings.output_dir / f"{ticker_slug}_{date_slug}_trace.json"
+
+        trace_data = {
+            "session_id": session_id,
+            "user_query": user_query,
+            "ticker": ticker,
+            "company_name": company_name,
+            "report_type": report_type.value,
+            "editorial_goal": state.editorial_goal,
+            "run_aml": run_aml,
+            "status": state.status.value,
+            "turn": state.turn,
+            "telemetry": telemetry.model_dump(),
+            "report_spec": report_spec.model_dump() if report_spec else None,
+            "custom_metrics": state.custom_metrics,
+            "tool_log": [t.model_dump() for t in tool_log],
+        }
+        trace_path.write_text(json.dumps(trace_data, indent=2, default=str), encoding="utf-8")
+        logger.info("Trace file written to %s", trace_path)
+    except Exception as exc:
+        logger.warning("Could not write trace file: %s", exc)
+
     return state, final_report
-
-
-# Compatibility class for schemas
-class CitedClaim:
-    def __init__(self, claim: str, source_url: str):
-        self.claim = claim
-        self.source_url = source_url
-
-    def model_dump(self) -> dict[str, str]:
-        return {"claim": self.claim, "source_url": self.source_url}

@@ -324,7 +324,7 @@ class AgentStatus(str, Enum):
 
 
 class ToolCallRecord(BaseModel):
-    turn: int
+    turn: int = 1
     tool_name: str
     arguments: dict
     result_summary: str          # short, for the trace log — not the raw payload
