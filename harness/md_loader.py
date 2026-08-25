@@ -1,25 +1,15 @@
 """
-Lightweight loader for the agents/*.md and skills/*.md files.
+Lightweight loader for agent system prompt files in agents/*.md.
 
-Design choice (see ARCHITECTURE.md): rather than trying to parse a
-Gemini function-calling JSON schema out of free-form prose, each skill
-.md file carries a small YAML frontmatter block with the actual schema,
-and a prose body below it for human-readable notes. This keeps the
-"specs live in an editable .md file" requirement while making parsing
-trivial and robust — it's a YAML parse, not an NLP problem.
-
-Agent .md files use the same frontmatter/body split, but only the body
-(the system prompt text) is used at runtime; frontmatter there is just
-documentation for humans reading the file.
+Agent .md files carry a small YAML frontmatter block for documentation/metadata
+and a prose body below it for the actual system prompt text.
+`load_agent_prompt` parses the file and extracts the body text at runtime.
 """
 from __future__ import annotations
 
-import importlib
-from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 import yaml
-from google.genai import types
 
 from config import settings
 
@@ -66,54 +56,3 @@ def load_agent_prompt(name: str) -> str:
     if not body:
         raise ValueError(f"Agent prompt file has no body content: {path}")
     return body
-
-
-def _resolve_dotted_callable(dotted_path: str) -> Callable:
-    """Import 'tools.search_tools.search_web_news' -> the actual function object."""
-    module_path, _, func_name = dotted_path.rpartition(".")
-    if not module_path:
-        raise ValueError(f"tool_function must be a dotted path, got: {dotted_path!r}")
-    module = importlib.import_module(module_path)
-    try:
-        return getattr(module, func_name)
-    except AttributeError as exc:
-        raise ValueError(f"'{func_name}' not found in module '{module_path}'") from exc
-
-
-@dataclass
-class SkillBundle:
-    """A skill's Gemini-facing schema paired with the real Python callable it maps to."""
-    name: str
-    declaration: types.FunctionDeclaration
-    tool_function_path: str
-    description_body: str  # prose notes from below the frontmatter, for humans/debugging
-
-    @property
-    def function(self) -> Callable:
-        return _resolve_dotted_callable(self.tool_function_path)
-
-
-def load_skill(name: str) -> SkillBundle:
-    """Load skills/{name}.md into a SkillBundle: schema + resolved callable."""
-    path = settings.skills_dir / f"{name}.md"
-    if not path.exists():
-        raise FileNotFoundError(f"Skill spec not found: {path}")
-
-    frontmatter, body = _split_frontmatter(path.read_text(encoding="utf-8"))
-
-    for required_key in ("name", "description", "tool_function", "parameters"):
-        if required_key not in frontmatter:
-            raise ValueError(f"Skill spec {path} is missing required frontmatter key: {required_key!r}")
-
-    declaration = types.FunctionDeclaration(
-        name=frontmatter["name"],
-        description=frontmatter["description"],
-        parameters_json_schema=frontmatter["parameters"],
-    )
-
-    return SkillBundle(
-        name=frontmatter["name"],
-        declaration=declaration,
-        tool_function_path=frontmatter["tool_function"],
-        description_body=body,
-    )

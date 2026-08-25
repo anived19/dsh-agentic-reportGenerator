@@ -33,7 +33,6 @@ class Settings(BaseSettings):
     templates_dir: Path = Path("templates")
     static_dir: Path = Path("static")
     agents_dir: Path = Path("agents")
-    skills_dir: Path = Path("skills")
 
     # --- Cache ---
     cache_ttl_hours: int = 6

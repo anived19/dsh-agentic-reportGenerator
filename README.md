@@ -11,13 +11,16 @@ See `ARCHITECTURE.md` for the full pipeline design and `GLOSSARY.md` for plain-E
 - Financial Highlights (price, market cap, 50d/200d MA, period high/low)
 - Fundamentals Deep-Dive (EPS, D/E, ROE, ROCE, analyst consensus, quarterly financials)
 - Technical Analysis (RSI-14, MACD, volume trend, support/resistance)
-- Ownership & Holdings (insider %, institutional %)
+- Ownership & Holdings (insider %, institutional %, public float %)
 - Valuation Analysis (P/E, forward P/E, P/B, P/S, EV/EBITDA, margins)
+- Specialized Sector KPIs (Banking NIM/ROA, SaaS Rule of 40/ARR, Retail asset turnover)
+- Peer Benchmarking (multi-competitor comparative valuation matrix)
+- Contextual Anomaly Analysis ("The Why Loop" filings/news investigation)
 - Market Sentiment & News (cited catalysts and risks from live web research)
 - Risk Factors (separately listed, each source-cited)
 - Scenario Outlook (Bull / Base / Bear, each tied to a specific metric or catalyst)
 
-*Which sections appear in which report type is controlled by `render_config.yaml`.*
+*Which sections appear in which report type is controlled by `render_config.yaml` or dynamically tailored via DSH's `plan_report_format`.*
 
 **Layer 2 — AML/ABC Compliance Screening** (`--aml` flag):
 - Structured screening table: entity → source → finding → severity → citation
@@ -43,6 +46,9 @@ pip install -r requirements.txt
 ## Run
 
 ```bash
+# Verify system health
+python tools/health_check.py
+
 # Layer 1 only
 python main.py "full equity report on TCS"
 python main.py "news sentiment report of Reliance Industries"
@@ -61,5 +67,5 @@ Output PDF: `outputs/TICKER_YYYY-MM-DD.pdf`
 - **New AML screening source**: implement a function in `tools/aml_tools.py`, add it to `run_structured_aml_sweep` in `tools/aml_tools.py`. See `.agents/skills/aml-abc-screening/SKILL.md`.
 - **New static ticker mappings**: add to `_STATIC_MAP` in `tools/ticker_resolver.py` or `tools/conglomerate_map.yaml`.
 - **Change the model**: set `GEMINI_MODEL` in `.env`.
-- **Change report tone/structure**: edit `agents/chief_editor.md` or `agents/orchestrator.md` — no code changes needed.
+- **Change report tone/structure**: edit `agents/chief_editor.md` or orchestrator prompt in `cordis.yml` — no code changes needed.
 - **Change section ordering**: edit `render_config.yaml` — no code changes needed.
