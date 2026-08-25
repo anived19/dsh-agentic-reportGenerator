@@ -58,3 +58,44 @@ def search_web_news(
         logger.warning("Tavily returned no results for query: %r", full_query)
 
     return results
+
+
+@retry_on_transient_error(max_attempts=3)
+def investigate_financial_anomaly(
+    company_name: str,
+    ticker: str,
+    anomaly_type: str,
+    metric_impacted: str = "",
+    observed_value: str = "",
+    prior_value: str = "",
+    query_hint: str = "",
+) -> dict[str, Any]:
+    """
+    Contextual deep-dive anomaly hunter ("The Why Loop").
+    When a quantitative anomaly is identified (e.g. sharp QoQ profit drop, margin compression, debt spike),
+    issues a targeted search to locate regulatory filings and earnings report explanations.
+    """
+    search_terms = f"{company_name or ticker} {anomaly_type} {metric_impacted} {query_hint} earnings results reason explanation charge one-off"
+    results = search_web_news(query=search_terms, ticker=ticker, depth="basic", max_results=3)
+
+    findings = []
+    for r in results:
+        findings.append({
+            "anomaly_type": anomaly_type,
+            "metric_impacted": metric_impacted or anomaly_type,
+            "observed_value": observed_value,
+            "prior_or_expected_value": prior_value,
+            "driver_explanation": r.get("content", "")[:350],
+            "source_url": r.get("url", ""),
+            "severity": "high" if any(w in anomaly_type.lower() for w in ("drop", "plunge", "loss", "spike", "fraud", "penalty", "impairment")) else "medium",
+        })
+
+    return {
+        "ticker": ticker,
+        "anomaly_type": anomaly_type,
+        "metric_impacted": metric_impacted,
+        "investigation_status": "completed" if findings else "inconclusive",
+        "findings_count": len(findings),
+        "findings": findings,
+        "summary": f"Identified {len(findings)} potential qualitative explanations for {anomaly_type}." if findings else "No specific cited driver found in public news.",
+    }

@@ -121,6 +121,18 @@ class SessionStateManager:
                 self.state.sentiment_findings = SentimentFindings.model_validate(data["sentiment_findings"])
             if data.get("aml_result"):
                 self.state.aml_result = AMLScreeningResult.model_validate(data["aml_result"])
+            if data.get("sector_metrics"):
+                from schemas import SectorMetricsContainer
+                self.state.sector_metrics = SectorMetricsContainer.model_validate(data["sector_metrics"])
+            if data.get("peer_benchmarks"):
+                from schemas import PeerBenchmarkData
+                self.state.peer_benchmarks = PeerBenchmarkData.model_validate(data["peer_benchmarks"])
+            if data.get("anomaly_findings"):
+                from schemas import AnomalyInvestigationFinding
+                self.state.anomaly_findings = [AnomalyInvestigationFinding.model_validate(f) for f in data["anomaly_findings"]]
+            if data.get("cro_audit_report"):
+                from schemas import CROAuditReport
+                self.state.cro_audit_report = CROAuditReport.model_validate(data["cro_audit_report"])
             if data.get("validation_result"):
                 self.validation_result = ValidationResult.model_validate(data["validation_result"])
             self.state.tool_log = [ToolCallRecord.model_validate(t) for t in data.get("tool_log", [])]
@@ -192,6 +204,10 @@ class SessionStateManager:
                 "turn": self.state.turn,
                 "market_data": self.state.market_data,
                 "custom_metrics": self.state.custom_metrics,
+                "sector_metrics": self.state.sector_metrics.model_dump() if self.state.sector_metrics else None,
+                "peer_benchmarks": self.state.peer_benchmarks.model_dump() if self.state.peer_benchmarks else None,
+                "anomaly_findings": [f.model_dump() for f in self.state.anomaly_findings],
+                "cro_audit_report": self.state.cro_audit_report.model_dump() if self.state.cro_audit_report else None,
                 "candidate_entities": self.state.candidate_entities,
                 "telemetry": self.state.telemetry.model_dump(),
                 "report_spec": self.state.report_spec.model_dump() if self.state.report_spec else None,
@@ -428,6 +444,110 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "compute_banking_metrics",
+        "description": (
+            "Deterministic banking & financial institution metrics calculator. "
+            "Computes Net Interest Margin (NIM) proxy, Efficiency Ratio, Return on Assets (ROA), "
+            "Equity-to-Assets ratio, and Loan-to-Deposit proxy."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "ticker": {"type": "string", "description": "Stock ticker symbol (e.g. 'JPM', 'HDFCBANK.NS')."}
+            },
+            "required": ["ticker"],
+        },
+    },
+    {
+        "name": "compute_saas_metrics",
+        "description": (
+            "Deterministic SaaS & Technology metrics calculator. "
+            "Computes Rule of 40 score (YoY Rev Growth + FCF Margin), ARR Run-Rate, "
+            "Free Cash Flow Margin, and Revenue per Employee."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "ticker": {"type": "string", "description": "Stock ticker symbol (e.g. 'TCS.NS', 'MSFT')."}
+            },
+            "required": ["ticker"],
+        },
+    },
+    {
+        "name": "compute_retail_consumer_metrics",
+        "description": (
+            "Deterministic Retail & Consumer Goods metrics calculator. "
+            "Computes Inventory Turnover, Days Sales of Inventory (DSI), Asset Turnover, "
+            "and Gross Margin Stability."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "ticker": {"type": "string", "description": "Stock ticker symbol (e.g. 'MARUTI.NS', 'WMT')."}
+            },
+            "required": ["ticker"],
+        },
+    },
+    {
+        "name": "get_peer_tickers",
+        "description": (
+            "Discover 3-5 validated industry peers and competitors for a given ticker symbol. "
+            "Returns structured peer metadata including name, market cap, and valuation multiples."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "ticker": {"type": "string", "description": "Target stock ticker symbol."},
+                "max_peers": {"type": "integer", "description": "Maximum number of peers to return (default 4)."},
+            },
+            "required": ["ticker"],
+        },
+    },
+    {
+        "name": "investigate_financial_anomaly",
+        "description": (
+            "Contextual deep-dive anomaly hunter ('The Why Loop'). "
+            "Issues targeted web searches to explain sharp QoQ profit drops, margin contractions, "
+            "or debt spikes before report synthesis."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "ticker": {"type": "string", "description": "Stock ticker symbol."},
+                "anomaly_type": {"type": "string", "description": "Type of anomaly (e.g. 'QoQ Net Income Plunge', 'Debt Surge')."},
+                "metric_impacted": {"type": "string", "description": "Specific metric impacted."},
+                "observed_value": {"type": "string", "description": "Observed value in latest quarter."},
+                "prior_value": {"type": "string", "description": "Prior or baseline value."},
+                "query_hint": {"type": "string", "description": "Optional search hint."},
+            },
+            "required": ["ticker", "anomaly_type"],
+        },
+    },
+    {
+        "name": "audit_draft",
+        "description": (
+            "Chief Risk Officer (CRO) deterministic self-audit verification tool. "
+            "Strictly cross-checks proposed draft claims and numbers against ground-truth market data prior to finalization."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "draft_summary": {"type": "string", "description": "Summary or draft content to audit."},
+                "cross_check_items": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "metric_name": {"type": "string"},
+                            "stated_value": {"type": "string"},
+                        },
+                    },
+                    "description": "Specific key metrics to cross-verify against ground truth.",
+                },
+            },
+        },
+    },
+    {
         "name": "plan_report_format",
         "description": (
             "Submit a dynamic ReportSpec tailoring report section order and emphasis to findings and editorial goal (max 5-7 sections)."
@@ -616,7 +736,9 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
     if name in (
         "get_price_snapshot", "get_valuation_multiples", "get_fundamentals",
         "get_quarterly_financials", "get_technicals", "get_ownership",
-        "compute_custom_financial_metric"
+        "compute_custom_financial_metric", "compute_banking_metrics",
+        "compute_saas_metrics", "compute_retail_consumer_metrics",
+        "get_peer_tickers", "investigate_financial_anomaly"
     ):
         if state.status == AgentStatus.AWAITING_USER or (len(state.candidate_entities) > 1 and not state.ticker):
             return {
@@ -689,6 +811,107 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         session_mgr.category_attempts["ownership"] += 1
         res = get_ownership(ticker)
         state.market_data.update(res)
+        session_mgr.checkpoint()
+        return res
+
+    elif name == "compute_banking_metrics":
+        from tools.finance_tools import compute_banking_metrics
+        ticker = arguments.get("ticker") or state.ticker
+        if not ticker:
+            return {"error": "No ticker specified or resolved. Call resolve_entity first."}
+        res = compute_banking_metrics(ticker)
+        from schemas import BankingMetrics, SectorMetricsContainer
+        if not state.sector_metrics:
+            state.sector_metrics = SectorMetricsContainer(sector="Banking & Financials", banking=BankingMetrics(**res))
+        else:
+            state.sector_metrics.banking = BankingMetrics(**res)
+        session_mgr.checkpoint()
+        return res
+
+    elif name == "compute_saas_metrics":
+        from tools.finance_tools import compute_saas_metrics
+        ticker = arguments.get("ticker") or state.ticker
+        if not ticker:
+            return {"error": "No ticker specified or resolved. Call resolve_entity first."}
+        res = compute_saas_metrics(ticker)
+        from schemas import SaaSMetrics, SectorMetricsContainer
+        if not state.sector_metrics:
+            state.sector_metrics = SectorMetricsContainer(sector="Technology & SaaS", saas=SaaSMetrics(**res))
+        else:
+            state.sector_metrics.saas = SaaSMetrics(**res)
+        session_mgr.checkpoint()
+        return res
+
+    elif name == "compute_retail_consumer_metrics":
+        from tools.finance_tools import compute_retail_consumer_metrics
+        ticker = arguments.get("ticker") or state.ticker
+        if not ticker:
+            return {"error": "No ticker specified or resolved. Call resolve_entity first."}
+        res = compute_retail_consumer_metrics(ticker)
+        from schemas import RetailConsumerMetrics, SectorMetricsContainer
+        if not state.sector_metrics:
+            state.sector_metrics = SectorMetricsContainer(sector="Retail & Consumer Goods", retail=RetailConsumerMetrics(**res))
+        else:
+            state.sector_metrics.retail = RetailConsumerMetrics(**res)
+        session_mgr.checkpoint()
+        return res
+
+    elif name == "get_peer_tickers":
+        from tools.peer_resolver import get_peer_tickers
+        ticker = arguments.get("ticker") or state.ticker
+        if not ticker:
+            return {"error": "No ticker specified or resolved. Call resolve_entity first."}
+        max_peers = arguments.get("max_peers", 4)
+        res = get_peer_tickers(ticker, max_peers=max_peers)
+        from schemas import PeerBenchmarkData, PeerCompanyInfo
+        peers_list = [PeerCompanyInfo(**p) for p in res.get("peers", [])]
+        state.peer_benchmarks = PeerBenchmarkData(
+            target_ticker=res.get("target_ticker", ticker),
+            target_name=res.get("target_name", state.company_name),
+            industry=res.get("industry"),
+            peers=peers_list,
+            industry_summary=res.get("industry_summary"),
+        )
+        session_mgr.checkpoint()
+        return res
+
+    elif name == "investigate_financial_anomaly":
+        from tools.search_tools import investigate_financial_anomaly
+        ticker = arguments.get("ticker") or state.ticker
+        if not ticker:
+            return {"error": "No ticker specified or resolved. Call resolve_entity first."}
+        anomaly_type = arguments.get("anomaly_type", "Financial Anomaly")
+        metric_impacted = arguments.get("metric_impacted", "")
+        observed_val = arguments.get("observed_value", "")
+        prior_val = arguments.get("prior_value", "")
+        query_hint = arguments.get("query_hint", "")
+
+        res = investigate_financial_anomaly(
+            company_name=state.company_name or "",
+            ticker=ticker,
+            anomaly_type=anomaly_type,
+            metric_impacted=metric_impacted,
+            observed_value=observed_val,
+            prior_value=prior_val,
+            query_hint=query_hint,
+        )
+        from schemas import AnomalyInvestigationFinding
+        for f in res.get("findings", []):
+            state.anomaly_findings.append(AnomalyInvestigationFinding(**f))
+        session_mgr.checkpoint()
+        return res
+
+    elif name == "audit_draft":
+        from tools.finance_tools import audit_draft_metrics
+        draft_summary = arguments.get("draft_summary", "")
+        cross_check_items = arguments.get("cross_check_items", [])
+        res = audit_draft_metrics(
+            market_data=state.market_data,
+            draft_summary=draft_summary,
+            cross_check_items=cross_check_items,
+        )
+        from schemas import CROAuditReport
+        state.cro_audit_report = CROAuditReport(**res)
         session_mgr.checkpoint()
         return res
 

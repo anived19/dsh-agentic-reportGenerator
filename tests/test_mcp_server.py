@@ -151,13 +151,19 @@ def test_dispatch_unknown_tool():
 
 
 def test_mcp_async_list_tools():
-    """Verify async list_tools handler returns all 16 tools as Tool objects."""
+    """Verify async list_tools handler returns all 22 tools as Tool objects."""
     tools = asyncio.run(list_tools())
-    assert len(tools) == 16
+    assert len(tools) == 22
     names = [t.name for t in tools]
     assert "resolve_entity" in names
     assert "ask_user" in names
     assert "get_price_snapshot" in names
+    assert "compute_banking_metrics" in names
+    assert "compute_saas_metrics" in names
+    assert "compute_retail_consumer_metrics" in names
+    assert "get_peer_tickers" in names
+    assert "investigate_financial_anomaly" in names
+    assert "audit_draft" in names
     assert "validate_data" in names
     assert "plan_report_format" in names
     assert "finalize_report" in names
@@ -297,4 +303,77 @@ def test_disambiguation_state_gate_and_lifecycle_reset(tmp_path, monkeypatch):
         mock_price.return_value = {"current_price": 750.0, "currency": "INR"}
         price_res = _dispatch_tool("get_price_snapshot", {})
         assert price_res.get("current_price") == 750.0
+
+
+def test_new_sector_peer_cro_tools_dispatch():
+    """Verify dispatching and state updates for sector, peer, anomaly, and audit tools."""
+    from harness.mcp_server import _dispatch_tool, session_mgr
+
+    session_mgr.state.ticker = "JPM"
+    session_mgr.state.company_name = "JPMorgan Chase & Co."
+
+    # 1. Sector tool dispatch
+    with patch("tools.finance_tools.compute_banking_metrics") as mock_bank:
+        mock_bank.return_value = {"ticker": "JPM", "nim_pct": 2.5, "efficiency_ratio_pct": 55.0}
+        res = _dispatch_tool("compute_banking_metrics", {"ticker": "JPM"})
+        assert res["nim_pct"] == 2.5
+        assert session_mgr.state.sector_metrics is not None
+        assert session_mgr.state.sector_metrics.banking.nim_pct == 2.5
+
+    # 2. Peer benchmarking dispatch
+    with patch("tools.peer_resolver.get_peer_tickers") as mock_peers:
+        mock_peers.return_value = {
+            "target_ticker": "JPM",
+            "target_name": "JPMorgan Chase & Co.",
+            "industry": "Banks - Diversified",
+            "peers_count": 2,
+            "peers": [
+                {"ticker": "BAC", "name": "Bank of America Corp", "pe_ratio": 11.2},
+                {"ticker": "WFC", "name": "Wells Fargo & Co", "pe_ratio": 10.5},
+            ],
+            "industry_summary": "2 peers",
+        }
+        res = _dispatch_tool("get_peer_tickers", {"ticker": "JPM", "max_peers": 2})
+        assert res["peers_count"] == 2
+        assert session_mgr.state.peer_benchmarks is not None
+        assert len(session_mgr.state.peer_benchmarks.peers) == 2
+
+    # 3. Anomaly hunting dispatch
+    with patch("tools.search_tools.investigate_financial_anomaly") as mock_anom:
+        mock_anom.return_value = {
+            "ticker": "JPM",
+            "anomaly_type": "QoQ Profit Drop",
+            "findings_count": 1,
+            "findings": [
+                {
+                    "anomaly_type": "QoQ Profit Drop",
+                    "metric_impacted": "Net Income",
+                    "observed_value": "$10B",
+                    "prior_or_expected_value": "$14B",
+                    "driver_explanation": "One-off FDIC special assessment fee of $2.9B.",
+                    "source_url": "https://sec.gov/jpm-10k",
+                    "severity": "high",
+                }
+            ],
+            "summary": "1 finding",
+        }
+        res = _dispatch_tool("investigate_financial_anomaly", {"ticker": "JPM", "anomaly_type": "QoQ Profit Drop"})
+        assert res["findings_count"] == 1
+        assert len(session_mgr.state.anomaly_findings) >= 1
+        assert session_mgr.state.anomaly_findings[-1].metric_impacted == "Net Income"
+
+    # 4. CRO Audit dispatch
+    with patch("tools.finance_tools.audit_draft_metrics") as mock_audit:
+        mock_audit.return_value = {
+            "audit_passed": True,
+            "flags_count": 0,
+            "verified_metrics_count": 5,
+            "discrepancies": [],
+            "cro_verdict": "PASSED",
+        }
+        res = _dispatch_tool("audit_draft", {"draft_summary": "Test draft summary"})
+        assert res["audit_passed"] is True
+        assert session_mgr.state.cro_audit_report is not None
+        assert session_mgr.state.cro_audit_report.audit_passed is True
+
 

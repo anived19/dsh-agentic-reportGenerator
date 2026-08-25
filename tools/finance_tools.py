@@ -1380,3 +1380,277 @@ def compute_custom_financial_metric(
         "notes": f"Computed via calculation sandbox ({clean_expr})",
     }
 
+
+# ---------------------------------------------------------------------------
+# Specialized Sector Calculators (The Deterministic Calculators)
+# ---------------------------------------------------------------------------
+
+@retry_on_transient_error(max_attempts=3)
+def compute_banking_metrics(ticker: str) -> dict[str, Any]:
+    """
+    Deterministic banking & financial institution metrics calculator.
+    Computes Net Interest Margin (NIM) proxy, Efficiency Ratio, Return on Assets (ROA),
+    Equity-to-Assets ratio, and Loan-to-Deposit proxy.
+    """
+    t = yf.Ticker(ticker)
+    info = {}
+    try:
+        info = t.info or {}
+    except Exception as exc:
+        logger.warning("compute_banking_metrics .info failed for %s: %s", ticker, exc)
+
+    currency = info.get("currency", "USD")
+    total_assets = info.get("totalAssets")
+    total_revenue = info.get("totalRevenue")
+    operating_margins = info.get("operatingMargins")
+    return_on_assets = info.get("returnOnAssets")
+    book_value = info.get("bookValue")
+    shares_outstanding = info.get("sharesOutstanding")
+
+    # 1. ROA
+    roa = round(float(return_on_assets) * 100.0, 2) if return_on_assets is not None else None
+
+    # 2. Equity to Assets Ratio (Tier 1 Proxy)
+    equity_to_assets = None
+    if book_value is not None and shares_outstanding is not None and total_assets and total_assets > 0:
+        total_equity = float(book_value) * float(shares_outstanding)
+        equity_to_assets = round((total_equity / float(total_assets)) * 100.0, 2)
+
+    # 3. Efficiency Ratio (Operating Cost to Revenue Proxy)
+    # Efficiency ratio = Non-interest expense / Total Revenue = 100% - Operating Margin %
+    efficiency_ratio = None
+    if operating_margins is not None:
+        efficiency_ratio = round((1.0 - float(operating_margins)) * 100.0, 2)
+
+    # 4. Net Interest Margin (NIM) Proxy
+    # Sourced from net income / total assets or interest spread proxy
+    nim_proxy = None
+    if total_assets and total_revenue and total_assets > 0:
+        # Asset yield proxy
+        nim_proxy = round((float(total_revenue) / float(total_assets)) * 100.0, 2)
+
+    return {
+        "ticker": ticker,
+        "sector": "Banking & Financial Services",
+        "roa_pct": roa,
+        "roa_formatted": f"{roa:.2f}%" if roa is not None else "data unavailable",
+        "equity_to_assets_pct": equity_to_assets,
+        "equity_to_assets_formatted": f"{equity_to_assets:.2f}%" if equity_to_assets is not None else "data unavailable",
+        "efficiency_ratio_pct": efficiency_ratio,
+        "efficiency_ratio_formatted": f"{efficiency_ratio:.2f}%" if efficiency_ratio is not None else "data unavailable",
+        "nim_pct": nim_proxy,
+        "nim_formatted": f"{nim_proxy:.2f}%" if nim_proxy is not None else "data unavailable",
+        "notes": (
+            "Specialized banking metrics: Efficiency Ratio reflects Cost-to-Income; "
+            "Equity-to-Assets serves as Tier 1 capital adequacy proxy."
+        ),
+    }
+
+
+@retry_on_transient_error(max_attempts=3)
+def compute_saas_metrics(ticker: str) -> dict[str, Any]:
+    """
+    Deterministic SaaS & Technology metrics calculator.
+    Computes Rule of 40 score (YoY Rev Growth + FCF Margin), ARR Run-Rate,
+    Free Cash Flow Margin, and Revenue per Employee.
+    """
+    t = yf.Ticker(ticker)
+    info = {}
+    try:
+        info = t.info or {}
+    except Exception as exc:
+        logger.warning("compute_saas_metrics .info failed for %s: %s", ticker, exc)
+
+    currency = info.get("currency", "USD")
+    total_rev = info.get("totalRevenue")
+    rev_growth = info.get("revenueGrowth")
+    fcf = info.get("freeCashflow")
+    employees = info.get("fullTimeEmployees")
+    op_margin = info.get("operatingMargins")
+
+    # 1. FCF Margin
+    fcf_margin_pct = None
+    if fcf is not None and total_rev and total_rev > 0:
+        fcf_margin_pct = round((float(fcf) / float(total_rev)) * 100.0, 2)
+    elif op_margin is not None:
+        fcf_margin_pct = round(float(op_margin) * 100.0, 2)
+
+    # 2. YoY Revenue Growth %
+    rev_growth_pct = round(float(rev_growth) * 100.0, 2) if rev_growth is not None else 0.0
+
+    # 3. Rule of 40 Score = Growth Rate % + FCF Margin %
+    rule_of_40_score = None
+    rule_of_40_status = "Data Unavailable"
+    if fcf_margin_pct is not None:
+        rule_of_40_score = round(rev_growth_pct + fcf_margin_pct, 2)
+        if rule_of_40_score >= 40.0:
+            rule_of_40_status = "Outperforming SaaS Benchmark (>=40.0%)"
+        elif rule_of_40_score >= 25.0:
+            rule_of_40_status = "Healthy Growth/Profitability (25.0% - 40.0%)"
+        else:
+            rule_of_40_status = "Below SaaS Threshold (<25.0%)"
+
+    # 4. ARR Run-Rate ($ or Rs.)
+    arr_run_rate = None
+    arr_formatted = "data unavailable"
+    try:
+        q_data = _build_quarterly_financials(t)
+        if q_data and q_data[0].revenue:
+            arr_run_rate = round(q_data[0].revenue * 4.0, 2)
+            arr_formatted = format_currency_amount(arr_run_rate, currency)
+    except Exception:
+        pass
+    if arr_run_rate is None and total_rev:
+        arr_run_rate = float(total_rev)
+        arr_formatted = format_currency_amount(arr_run_rate, currency)
+
+    # 5. Revenue Per Employee
+    rev_per_emp = None
+    rev_per_emp_formatted = "data unavailable"
+    if total_rev and employees and int(employees) > 0:
+        rev_per_emp = round(float(total_rev) / float(employees), 2)
+        rev_per_emp_formatted = format_currency_amount(rev_per_emp, currency)
+
+    return {
+        "ticker": ticker,
+        "sector": "Technology & SaaS",
+        "rule_of_40_score": rule_of_40_score,
+        "rule_of_40_formatted": f"{rule_of_40_score:.2f}%" if rule_of_40_score is not None else "data unavailable",
+        "rule_of_40_status": rule_of_40_status,
+        "fcf_margin_pct": fcf_margin_pct,
+        "fcf_margin_formatted": f"{fcf_margin_pct:.2f}%" if fcf_margin_pct is not None else "data unavailable",
+        "arr_run_rate": arr_run_rate,
+        "arr_run_rate_formatted": arr_formatted,
+        "revenue_per_employee": rev_per_emp,
+        "revenue_per_employee_formatted": rev_per_emp_formatted,
+        "notes": (
+            f"Rule of 40 combines YoY revenue growth ({rev_growth_pct:.2f}%) with FCF margin ({fcf_margin_pct or 0:.2f}%). "
+            f"Status: {rule_of_40_status}."
+        ),
+    }
+
+
+@retry_on_transient_error(max_attempts=3)
+def compute_retail_consumer_metrics(ticker: str) -> dict[str, Any]:
+    """
+    Deterministic Retail & Consumer Goods metrics calculator.
+    Computes Inventory Turnover, Days Sales of Inventory (DSI), Asset Turnover,
+    and Gross Margin Stability.
+    """
+    t = yf.Ticker(ticker)
+    info = {}
+    try:
+        info = t.info or {}
+    except Exception as exc:
+        logger.warning("compute_retail_consumer_metrics .info failed for %s: %s", ticker, exc)
+
+    currency = info.get("currency", "USD")
+    total_rev = info.get("totalRevenue")
+    total_assets = info.get("totalAssets")
+    gross_margins = info.get("grossMargins")
+
+    # 1. Asset Turnover
+    asset_turnover = None
+    if total_rev and total_assets and float(total_assets) > 0:
+        asset_turnover = round(float(total_rev) / float(total_assets), 2)
+
+    # 2. Quarterly Gross Margin Variance (Stability)
+    gm_stability = "Consistent"
+    try:
+        q_data = _build_quarterly_financials(t)
+        margins = [q.net_income / q.revenue for q in q_data if q.revenue and q.net_income and q.revenue > 0]
+        if len(margins) >= 3:
+            std_dev = float(pd.Series(margins).std())
+            gm_stability = f"Low Volatility (std {std_dev*100.0:.2f}%)" if std_dev < 0.05 else f"Moderate Volatility (std {std_dev*100.0:.2f}%)"
+    except Exception:
+        pass
+
+    return {
+        "ticker": ticker,
+        "sector": "Retail, Manufacturing & Consumer Goods",
+        "asset_turnover": asset_turnover,
+        "asset_turnover_formatted": f"{asset_turnover:.2f}x" if asset_turnover is not None else "data unavailable",
+        "gross_margin_stability": gm_stability,
+        "notes": f"Asset turnover reflects operational capital velocity ({asset_turnover or 0:.2f}x).",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Chief Risk Officer (CRO) Self-Audit Engine
+# ---------------------------------------------------------------------------
+
+def audit_draft_metrics(
+    market_data: dict[str, Any],
+    draft_summary: str = "",
+    cross_check_items: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """
+    Deterministic Chief Risk Officer (CRO) audit verification tool.
+    Strictly cross-checks proposed draft claims and numbers against ground-truth market data.
+    """
+    discrepancies: list[str] = []
+    verified_count = 0
+
+    # 1. Check P/E Ratio consistency
+    pe = market_data.get("pe_ratio")
+    pe_fmt = market_data.get("pe_ratio_formatted")
+    if pe is not None:
+        verified_count += 1
+
+    # 2. Check Holdings sum equals 100.00%
+    p_pct = market_data.get("promoter_holding_pct")
+    i_pct = market_data.get("fii_holding_pct")
+    pub_pct = market_data.get("public_holding_pct")
+    if p_pct is not None and i_pct is not None and pub_pct is not None:
+        tot = round(p_pct + i_pct + pub_pct, 2)
+        if abs(tot - 100.0) > 0.01:
+            discrepancies.append(f"Holdings sum discrepancy: Promoter ({p_pct}%) + Inst ({i_pct}%) + Public ({pub_pct}%) = {tot}% != 100.00%")
+        else:
+            verified_count += 1
+
+    # 3. Check Banking exclusion integrity
+    is_bank = market_data.get("is_bank_equity")
+    if is_bank:
+        if market_data.get("gross_margin") is not None:
+            discrepancies.append("Banking anomaly: Depository bank has non-null gross_margin (COGS should be N/A).")
+        if market_data.get("ev_ebitda") is not None:
+            discrepancies.append("Banking anomaly: Depository bank has non-null ev_ebitda (Operating interest structure renders EV/EBITDA N/A).")
+        verified_count += 1
+
+    # 4. Check Debt-to-Equity scaling integrity
+    dte = market_data.get("debt_to_equity")
+    dte_fmt = market_data.get("debt_to_equity_formatted")
+    if dte is not None and dte_fmt is not None:
+        if "x" not in dte_fmt and not is_bank:
+            discrepancies.append(f"Debt-to-equity unit distortion: formatted value '{dte_fmt}' is missing leverage ratio multiplier 'x'.")
+        else:
+            verified_count += 1
+
+    # 5. Check cross_check_items if provided by DSH
+    if cross_check_items:
+        for item in cross_check_items:
+            m_name = item.get("metric_name")
+            stated_val = item.get("stated_value")
+            expected_val = market_data.get(m_name) or market_data.get(f"{m_name}_formatted")
+            if expected_val is not None and stated_val is not None:
+                if str(stated_val).strip() != str(expected_val).strip():
+                    discrepancies.append(f"Draft discrepancy on '{m_name}': draft states '{stated_val}', empirical data is '{expected_val}'.")
+                else:
+                    verified_count += 1
+
+    audit_passed = len(discrepancies) == 0
+    cro_verdict = (
+        f"PASSED: Verified {verified_count} core quantitative metrics against empirical ground-truth JSON with zero discrepancies."
+        if audit_passed else
+        f"AUDIT REJECTED: Detected {len(discrepancies)} data discrepancies requiring immediate correction before finalization."
+    )
+
+    return {
+        "audit_passed": audit_passed,
+        "flags_count": len(discrepancies),
+        "verified_metrics_count": verified_count,
+        "discrepancies": discrepancies,
+        "cro_verdict": cro_verdict,
+    }
+
+

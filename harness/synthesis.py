@@ -69,6 +69,8 @@ _SECTION_HEADINGS: dict[str, str] = {
     "sentiment_news":          "## Market Sentiment & News",
     "risk_factors":            "## Risk Factors",
     "scenario_outlook":        "## {n}-Month Outlook",   # {n} filled at runtime
+    "peer_benchmarking":       "## Peer Benchmarking & Industry Analysis",
+    "sector_kpis":             "## Specialized Sector Performance KPIs",
 }
 
 
@@ -268,6 +270,60 @@ def _instr_scenario_outlook(outlook_label: str, **kwargs) -> str:
         "publicly available data and does not constitute a prediction or investment advice.'"
     )
 
+def _instr_peer_benchmarking(outlook_label: str, market_metrics: Optional[MarketMetrics] = None, **kwargs) -> str:
+    peer_data = market_metrics.peer_benchmarks if market_metrics else None
+    if not peer_data or not peer_data.peers:
+        return (
+            "Write a Peer Benchmarking & Industry Comparison section:\n"
+            "- Compare the target company's valuation multiples and operating margins against sector norms.\n"
+            "- Note: 'Peer comparison based on sector averages and market benchmarks.'"
+        )
+    peers_list = ", ".join([f"{p.name} ({p.ticker})" for p in peer_data.peers])
+    return (
+        "Write a Peer Benchmarking & Comparative Industry Analysis section:\n"
+        f"- Table: Company | Market Cap | Trailing P/E | Forward P/E | P/S | EV/EBITDA | Operating Margin.\n"
+        f"- Target company and peers: {peers_list}.\n"
+        "- Use the exact formatted values from the JSON (market_cap_formatted, pe_ratio_formatted, forward_pe_formatted, ps_ratio_formatted, ev_ebitda_formatted, operating_margin_formatted).\n"
+        "- Provide a concise comparative synthesis (2-3 paragraphs) highlighting relative valuation premiums or discounts, margin leadership, and market positioning.\n"
+        "- Source note: '(Source: Yahoo Finance peer market data)'"
+    )
+
+def _instr_sector_kpis(outlook_label: str, market_metrics: Optional[MarketMetrics] = None, **kwargs) -> str:
+    sec = market_metrics.sector_metrics if market_metrics else None
+    if sec and sec.banking:
+        b = sec.banking
+        return (
+            "Write a Specialized Banking & Financial Performance KPIs section:\n"
+            "- Table: Banking Metric | Value | Analytical Context.\n"
+            f"  Rows: Net Interest Margin (NIM) Proxy ({b.nim_formatted or 'N/A'}), Efficiency Ratio ({b.efficiency_ratio_formatted or 'N/A'}), "
+            f"  Return on Assets ({b.roa_formatted or 'N/A'}), Equity-to-Assets Capital Ratio ({b.equity_to_assets_formatted or 'N/A'}).\n"
+            "- Explain how the cost-to-income efficiency ratio and capital adequacy support balance sheet resilience.\n"
+            "- Source: '(Source: Deterministic banking calculation from public financials)'"
+        )
+    elif sec and sec.saas:
+        s = sec.saas
+        return (
+            "Write a Specialized SaaS & Cloud Growth Performance section:\n"
+            "- Table: SaaS KPI | Value | Benchmark Context.\n"
+            f"  Rows: Rule of 40 Score ({s.rule_of_40_formatted or 'N/A'} - {s.rule_of_40_status or 'N/A'}), ARR Run-Rate ({s.arr_run_rate_formatted or 'N/A'}), "
+            f"  Free Cash Flow Margin ({s.fcf_margin_formatted or 'N/A'}), Revenue per Employee ({s.revenue_per_employee_formatted or 'N/A'}).\n"
+            "- Synthesize whether software growth velocity combined with free cash flow margin exceeds the 40% institutional hurdle rate.\n"
+            "- Source: '(Source: Deterministic SaaS calculation from quarterly financials)'"
+        )
+    elif sec and sec.retail:
+        r = sec.retail
+        return (
+            "Write an Operational Velocity & Capital Efficiency section:\n"
+            "- Table: Operational Metric | Value | Context.\n"
+            f"  Rows: Asset Turnover ({r.asset_turnover_formatted or 'N/A'}), Gross Margin Stability ({r.gross_margin_stability or 'N/A'}).\n"
+            "- Synthesize inventory velocity, asset utilization, and supply chain pricing stability.\n"
+            "- Source: '(Source: Deterministic operational calculation from balance sheet)'"
+        )
+    else:
+        return (
+            "Write a Specialized Sector Performance section analyzing industry-specific operating efficiency and capital allocation."
+        )
+
 
 _SECTION_INSTRUCTION_MAP = {
     "executive_summary":       _instr_executive_summary,
@@ -279,6 +335,8 @@ _SECTION_INSTRUCTION_MAP = {
     "sentiment_news":          _instr_sentiment_news,
     "risk_factors":            _instr_risk_factors,
     "scenario_outlook":        _instr_scenario_outlook,
+    "peer_benchmarking":       _instr_peer_benchmarking,
+    "sector_kpis":             _instr_sector_kpis,
 }
 
 

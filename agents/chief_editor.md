@@ -79,6 +79,15 @@ task, not a research task.
 - Dedicated section covering structural, competitive, macroeconomic, and strategic risks.
 - Do NOT copy-paste short-term news sentiment bullets verbatim — provide broader fundamental risk analysis.
 
+### Peer Benchmarking & Industry Analysis (when requested)
+- Present comparative table: Company | Market Cap | Trailing P/E | Forward P/E | P/S | EV/EBITDA | Operating Margin.
+- Highlight relative valuation premiums or discounts against peer competitors and sector medians.
+
+### Specialized Sector KPIs (when requested)
+- For Banking: present NIM, Efficiency Ratio, ROA, and Equity-to-Assets.
+- For SaaS & Tech: present Rule of 40 score, ARR Run-rate, FCF margin, and Revenue per Employee.
+- For Retail / Consumer: present Inventory turnover, DSI, and Asset turnover.
+
 ### Outlook / Scenario Structure (when requested)
 - Three clearly labelled sub-sections: **Bull Case**, **Base Case**, **Bear Case**.
 - Hedge language throughout: "could," "may," "if X materializes." Analytical synthesis, not prediction.

@@ -218,6 +218,12 @@ class MarketMetrics(BaseModel):
         description="Ad-hoc deterministic metrics computed via Python calculation sandbox.",
     )
 
+    # --- Sector-Specific & Advanced Deterministic Metrics ---
+    sector_metrics: Optional[SectorMetricsContainer] = None
+    peer_benchmarks: Optional[PeerBenchmarkData] = None
+    anomaly_findings: list[AnomalyInvestigationFinding] = Field(default_factory=list)
+    cro_audit_report: Optional[CROAuditReport] = None
+
     unavailable_fields: list[str] = Field(
         default_factory=list,
         description=(
@@ -228,6 +234,112 @@ class MarketMetrics(BaseModel):
     )
 
     fetched_at: date = Field(default_factory=date.today)
+
+
+# ---------------------------------------------------------------------------
+# Sector-Specific Calculator Schemas
+# ---------------------------------------------------------------------------
+
+class BankingMetrics(BaseModel):
+    nim_pct: Optional[float] = None
+    nim_formatted: Optional[str] = None
+    efficiency_ratio_pct: Optional[float] = None
+    efficiency_ratio_formatted: Optional[str] = None
+    roa_pct: Optional[float] = None
+    roa_formatted: Optional[str] = None
+    equity_to_assets_pct: Optional[float] = None
+    equity_to_assets_formatted: Optional[str] = None
+    loan_to_deposit_ratio: Optional[float] = None
+    loan_to_deposit_formatted: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class SaaSMetrics(BaseModel):
+    rule_of_40_score: Optional[float] = None
+    rule_of_40_formatted: Optional[str] = None
+    rule_of_40_status: Optional[str] = None
+    arr_run_rate: Optional[float] = None
+    arr_run_rate_formatted: Optional[str] = None
+    fcf_margin_pct: Optional[float] = None
+    fcf_margin_formatted: Optional[str] = None
+    revenue_per_employee: Optional[float] = None
+    revenue_per_employee_formatted: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class RetailConsumerMetrics(BaseModel):
+    inventory_turnover: Optional[float] = None
+    inventory_turnover_formatted: Optional[str] = None
+    days_inventory_outstanding: Optional[float] = None
+    days_inventory_outstanding_formatted: Optional[str] = None
+    asset_turnover: Optional[float] = None
+    asset_turnover_formatted: Optional[str] = None
+    gross_margin_stability: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class SectorMetricsContainer(BaseModel):
+    sector: str
+    industry: Optional[str] = None
+    banking: Optional[BankingMetrics] = None
+    saas: Optional[SaaSMetrics] = None
+    retail: Optional[RetailConsumerMetrics] = None
+
+
+# ---------------------------------------------------------------------------
+# Peer Benchmarking & Competitor Discovery
+# ---------------------------------------------------------------------------
+
+class PeerCompanyInfo(BaseModel):
+    ticker: str
+    name: str
+    market_cap: Optional[float] = None
+    market_cap_formatted: Optional[str] = None
+    pe_ratio: Optional[float] = None
+    pe_ratio_formatted: Optional[str] = None
+    forward_pe: Optional[float] = None
+    forward_pe_formatted: Optional[str] = None
+    ps_ratio: Optional[float] = None
+    ps_ratio_formatted: Optional[str] = None
+    ev_ebitda: Optional[float] = None
+    ev_ebitda_formatted: Optional[str] = None
+    operating_margin: Optional[float] = None
+    operating_margin_formatted: Optional[str] = None
+
+
+class PeerBenchmarkData(BaseModel):
+    target_ticker: str
+    target_name: Optional[str] = None
+    industry: Optional[str] = None
+    peers: list[PeerCompanyInfo] = Field(default_factory=list)
+    industry_summary: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Contextual Anomaly Investigation ("The Why Loop")
+# ---------------------------------------------------------------------------
+
+class AnomalyInvestigationFinding(BaseModel):
+    anomaly_type: str
+    metric_impacted: str
+    observed_value: str
+    prior_or_expected_value: str
+    driver_explanation: str
+    source_url: str
+    severity: str = "medium"  # "high" | "medium" | "low"
+
+
+# ---------------------------------------------------------------------------
+# Chief Risk Officer (CRO) Self-Audit Phase
+# ---------------------------------------------------------------------------
+
+class CROAuditReport(BaseModel):
+    audit_passed: bool
+    flags_count: int = 0
+    verified_metrics_count: int = 0
+    discrepancies: list[str] = Field(default_factory=list)
+    cro_verdict: str
+    checked_at: date = Field(default_factory=date.today)
 
 
 # ---------------------------------------------------------------------------
@@ -406,6 +518,10 @@ class AgentState(BaseModel):
     company_name: Optional[str] = None
     market_data: dict = Field(default_factory=dict)                  # incrementally filled by granular fetch tools
     custom_metrics: dict[str, Any] = Field(default_factory=dict)    # computed via calculation sandbox
+    sector_metrics: Optional[SectorMetricsContainer] = None          # computed via sector-specific calculators
+    peer_benchmarks: Optional[PeerBenchmarkData] = None             # populated via get_peer_tickers and multiple fetches
+    anomaly_findings: list[AnomalyInvestigationFinding] = Field(default_factory=list) # populated via anomaly hunter
+    cro_audit_report: Optional[CROAuditReport] = None                # produced via audit_draft
     sentiment_findings: Optional[SentimentFindings] = None
     aml_result: Optional[AMLScreeningResult] = None
     report_spec: Optional[ReportSpec] = None
