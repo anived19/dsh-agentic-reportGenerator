@@ -270,12 +270,78 @@ def _build_quarterly_financials(t: yf.Ticker) -> list[QuarterlyDataPoint]:
         return []
 
 
-# ---------------------------------------------------------------------------
-# Holdings helper
-# ---------------------------------------------------------------------------
+def _to_pct(val: Any) -> float | None:
+    """
+    Robust percentage normalizer.
+    - String inputs with '%' (e.g. '0.39%', '75.8%') -> stripped string is ALREADY in percentage points (0.39, 75.8).
+    - String inputs without '%' (e.g. '0.39') -> if float < 1.0 and not 0.0, multiply by 100.
+    - Numeric inputs (float/int):
+      - 0.0039 -> 0.39% (decimal fraction < 1.0)
+      - 0.7583 -> 75.83% (decimal fraction < 1.0)
+      - 75.83 -> 75.83% (already in percent >= 1.0)
+    """
+    if val is None:
+        return None
+    try:
+        if isinstance(val, str):
+            val_str = val.strip()
+            if "%" in val_str:
+                cleaned = val_str.replace("%", "").strip()
+                return round(float(cleaned), 2)
+            num = float(val_str)
+            if 0 < abs(num) < 1.0:
+                return round(num * 100.0, 2)
+            return round(num, 2)
+        elif isinstance(val, (int, float)):
+            num = float(val)
+            if pd.isna(num):
+                return None
+            if 0 < abs(num) < 1.0:
+                return round(num * 100.0, 2)
+            return round(num, 2)
+    except (ValueError, TypeError):
+        return None
+    return None
 
-def _extract_holdings(t: yf.Ticker) -> dict[str, Any]:
+
+def _is_depository_bank(sector: str | None, industry: str | None) -> bool:
+    """Identify traditional depository and commercial banks that lack COGS / EBITDA."""
+    ind = (industry or "").strip().lower()
+    return ind in {
+        "banks - diversified",
+        "banks - regional",
+        "banks-diversified",
+        "banks-regional",
+        "diversified banks",
+        "regional banks",
+        "banking",
+    }
+
+
+def _extract_holdings(t: yf.Ticker, ticker: str = "", currency: str = "") -> dict[str, Any]:
+    # Determine jurisdiction
+    is_indian = ticker.upper().endswith(".NS") or ticker.upper().endswith(".BO") or (currency or "").upper() in ("INR", "₹", "RS")
+    is_us = (not is_indian) and ((currency or "").upper() in ("USD", "$") or "." not in ticker or any(ticker.upper().endswith(s) for s in (".N", ".O", ".A")))
+
+    if is_us:
+        insider_label = "Insider Ownership (SEC Form 4/10-K)"
+        inst_label = "Institutional Ownership (SEC Form 13F)"
+        filing_note = "Institutional holdings aggregated from SEC Form 13F filings via Yahoo Finance. Insider holdings reflect Form 4/144 beneficial ownership."
+    elif is_indian:
+        insider_label = "Promoter Holding"
+        inst_label = "Institutional Holding (FII + DII)"
+        filing_note = "Institutional figure represents combined FII+DII holding from exchange disclosures (SEBI filings)."
+    else:
+        insider_label = "Strategic / Insider Ownership"
+        inst_label = "Institutional Holdings"
+        filing_note = "Holdings reported via public regulatory disclosures / Yahoo Finance."
+
     result: dict[str, Any] = {
+        "is_us_equity": is_us,
+        "is_indian_equity": is_indian,
+        "insider_holding_label": insider_label,
+        "institutional_holding_label": inst_label,
+        "jurisdiction_filing_note": filing_note,
         "promoter_holding_pct": None,
         "promoter_holding_pct_formatted": None,
         "fii_holding_pct": None,
@@ -286,69 +352,88 @@ def _extract_holdings(t: yf.Ticker) -> dict[str, Any]:
     }
     try:
         holders = t.major_holders
-        if holders is None or holders.empty:
-            return result
+        if holders is not None and not holders.empty:
+            idx_lower = {str(i).lower(): i for i in holders.index}
 
-        def _to_pct(raw) -> float | None:
-            try:
-                s = str(raw).replace("%", "").strip()
-                v = float(s)
-                if 0 < v < 1:
-                    v = round(v * 100, 2)
-                return round(v, 2)
-            except (ValueError, TypeError):
-                return None
+            insider_key = next(
+                (idx_lower[k] for k in idx_lower
+                 if "insider" in k and "percent" in k), None
+            )
+            inst_key = next(
+                (idx_lower[k] for k in idx_lower
+                 if "institution" in k and "percent" in k
+                 and "float" not in k), None
+            )
 
-        idx_lower = {str(i).lower(): i for i in holders.index}
+            if insider_key is not None:
+                raw = holders.loc[insider_key].iloc[0]
+                result["promoter_holding_pct"] = _to_pct(raw)
 
-        insider_key = next(
-            (idx_lower[k] for k in idx_lower
-             if "insider" in k and "percent" in k), None
-        )
-        inst_key = next(
-            (idx_lower[k] for k in idx_lower
-             if "institution" in k and "percent" in k
-             and "float" not in k), None
-        )
+            if inst_key is not None:
+                raw = holders.loc[inst_key].iloc[0]
+                result["fii_holding_pct"] = _to_pct(raw)
 
-        if insider_key is not None:
-            raw = holders.loc[insider_key].iloc[0]
-            result["promoter_holding_pct"] = _to_pct(raw)
+            if result["promoter_holding_pct"] is None and len(holders.columns) >= 2:
+                val_col = holders.columns[0]
+                lbl_col = holders.columns[1]
+                rows = {str(row[lbl_col]).strip().lower(): row[val_col]
+                        for _, row in holders.iterrows()}
 
-        if inst_key is not None:
-            raw = holders.loc[inst_key].iloc[0]
-            result["fii_holding_pct"] = _to_pct(raw)
-
-        if result["promoter_holding_pct"] is None and len(holders.columns) >= 2:
-            val_col = holders.columns[0]
-            lbl_col = holders.columns[1]
-            rows = {str(row[lbl_col]).strip().lower(): row[val_col]
-                    for _, row in holders.iterrows()}
-
-            for key in ("% of shares held by all insider", "insiderpercent"):
-                if key in rows:
-                    result["promoter_holding_pct"] = _to_pct(rows[key])
-                    break
-
-            if result["fii_holding_pct"] is None:
-                for key in ("% of shares held by institutions", "institutionpercent"):
+                for key in ("% of shares held by all insider", "insiderpercent"):
                     if key in rows:
-                        result["fii_holding_pct"] = _to_pct(rows[key])
+                        result["promoter_holding_pct"] = _to_pct(rows[key])
                         break
 
-        if result["promoter_holding_pct"] is not None and result["fii_holding_pct"] is not None:
-            residual = 100.0 - result["promoter_holding_pct"] - result["fii_holding_pct"]
-            result["public_holding_pct"] = round(max(residual, 0.0), 2)
+                if result["fii_holding_pct"] is None:
+                    for key in ("% of shares held by institutions", "institutionpercent"):
+                        if key in rows:
+                            result["fii_holding_pct"] = _to_pct(rows[key])
+                            break
+
+        # Fallback to .info if major_holders was empty or incomplete
+        try:
+            info = t.info or {}
+            if result["promoter_holding_pct"] is None and info.get("heldPercentInsiders") is not None:
+                result["promoter_holding_pct"] = _to_pct(info.get("heldPercentInsiders"))
+            if result["fii_holding_pct"] is None and info.get("heldPercentInstitutions") is not None:
+                result["fii_holding_pct"] = _to_pct(info.get("heldPercentInstitutions"))
+        except Exception:
+            pass
+
+        p_pct = result["promoter_holding_pct"]
+        i_pct = result["fii_holding_pct"]
+
+        if p_pct is not None and i_pct is not None:
+            combined = p_pct + i_pct
+            if combined > 100.0:
+                logger.warning(
+                    "Holdings sum exceeds 100%% (%s: Insider %.2f%% + Inst %.2f%% = %.2f%%). Normalizing proportionally.",
+                    ticker, p_pct, i_pct, combined
+                )
+                scale = 100.0 / combined
+                p_pct = round(p_pct * scale, 2)
+                i_pct = round(100.0 - p_pct, 2)
+                pub_pct = 0.0
+                result["promoter_holding_pct"] = p_pct
+                result["fii_holding_pct"] = i_pct
+                result["public_holding_pct"] = pub_pct
+            else:
+                pub_pct = round(max(0.0, 100.0 - combined), 2)
+                result["public_holding_pct"] = pub_pct
+        elif p_pct is not None:
+            result["public_holding_pct"] = round(max(0.0, 100.0 - p_pct), 2)
+        elif i_pct is not None:
+            result["public_holding_pct"] = round(max(0.0, 100.0 - i_pct), 2)
 
         if result["promoter_holding_pct"] is not None:
-            result["promoter_holding_pct_formatted"] = format_percent(result["promoter_holding_pct"])
+            result["promoter_holding_pct_formatted"] = format_percent(result["promoter_holding_pct"], is_pct_points=True)
         if result["fii_holding_pct"] is not None:
-            result["institutional_holding_pct_formatted"] = format_percent(result["fii_holding_pct"])
+            result["institutional_holding_pct_formatted"] = format_percent(result["fii_holding_pct"], is_pct_points=True)
         if result["public_holding_pct"] is not None:
-            result["public_holding_pct_formatted"] = format_percent(result["public_holding_pct"])
+            result["public_holding_pct_formatted"] = format_percent(result["public_holding_pct"], is_pct_points=True)
 
     except Exception as exc:
-        logger.warning("Holdings extraction failed: %s", exc)
+        logger.warning("Holdings extraction failed for %s: %s", ticker, exc)
 
     return result
 
@@ -494,6 +579,10 @@ def get_valuation_multiples(ticker: str) -> dict[str, Any]:
         logger.warning("get_valuation_multiples .info failed for %s: %s", ticker, exc)
 
     currency = info.get("currency")
+    sector = info.get("sector")
+    industry = info.get("industry")
+    is_bank = _is_depository_bank(sector, industry)
+
     revenue_ttm = info.get("totalRevenue")
     if revenue_ttm is not None:
         revenue_ttm = round(float(revenue_ttm), 2)
@@ -502,12 +591,22 @@ def get_valuation_multiples(ticker: str) -> dict[str, Any]:
     fpe = _rnd(info.get("forwardPE"))
     pb = _rnd(info.get("priceToBook"))
     ps = _rnd(info.get("priceToSalesTrailing12Months"))
-    ev = _rnd(info.get("enterpriseToEbitda"))
     dy = _rnd(info.get("dividendYield"), 4)
-    gm = _rnd(info.get("grossMargins"), 4)
     om = _rnd(info.get("operatingMargins"), 4)
 
+    if is_bank:
+        gm = None
+        gm_formatted = "N/A (Depository Bank - No COGS)"
+        ev = None
+        ev_formatted = "N/A (Depository Bank - Operating Interest)"
+    else:
+        gm = _rnd(info.get("grossMargins"), 4)
+        gm_formatted = format_percent(gm)
+        ev = _rnd(info.get("enterpriseToEbitda"))
+        ev_formatted = format_number_amount(ev)
+
     return {
+        "is_bank_equity": is_bank,
         "pe_ratio": pe,
         "pe_ratio_formatted": format_number_amount(pe),
         "forward_pe": fpe,
@@ -517,13 +616,13 @@ def get_valuation_multiples(ticker: str) -> dict[str, Any]:
         "ps_ratio": ps,
         "ps_ratio_formatted": format_number_amount(ps),
         "ev_ebitda": ev,
-        "ev_ebitda_formatted": format_number_amount(ev),
+        "ev_ebitda_formatted": ev_formatted,
         "dividend_yield": dy,
         "dividend_yield_formatted": format_percent(dy),
         "revenue_ttm": revenue_ttm,
         "revenue_ttm_formatted": format_currency_amount(revenue_ttm, currency),
         "gross_margin": gm,
-        "gross_margin_formatted": format_percent(gm),
+        "gross_margin_formatted": gm_formatted,
         "operating_margin": om,
         "operating_margin_formatted": format_percent(om),
     }
@@ -539,10 +638,31 @@ def get_fundamentals(ticker: str) -> dict[str, Any]:
     except Exception as exc:
         logger.warning("get_fundamentals .info failed for %s: %s", ticker, exc)
 
+    sector = info.get("sector")
+    industry = info.get("industry")
+    is_bank = _is_depository_bank(sector, industry)
+
     eps = _rnd(info.get("trailingEps"))
-    dte = _rnd(info.get("debtToEquity"))
     roe = _rnd(info.get("returnOnEquity"), 4)
     roce = _compute_roce(info, t=t)
+
+    # Robust Debt-to-Equity scaling (Yahoo Finance returns debtToEquity as percentage)
+    raw_dte = info.get("debtToEquity")
+    if raw_dte is not None:
+        try:
+            raw_dte_f = float(raw_dte)
+            dte_ratio = round(raw_dte_f / 100.0, 2)
+            dte = dte_ratio
+            dte_formatted = f"{dte_ratio:.2f}x ({raw_dte_f:.2f}%)"
+        except Exception:
+            dte = None
+            dte_formatted = None
+    elif is_bank:
+        dte = None
+        dte_formatted = "N/A (Depository Bank - Tier 1 Capital Governed)"
+    else:
+        dte = None
+        dte_formatted = None
 
     # 1. Analyst recommendations count
     buy_count = None
@@ -591,10 +711,11 @@ def get_fundamentals(ticker: str) -> dict[str, Any]:
         target_low = round(float(info["targetLowPrice"]), 2)
 
     return {
+        "is_bank_equity": is_bank,
         "eps_ttm": eps,
         "eps_ttm_formatted": format_number_amount(eps),
         "debt_to_equity": dte,
-        "debt_to_equity_formatted": format_number_amount(dte),
+        "debt_to_equity_formatted": dte_formatted,
         "roe": roe,
         "roe_formatted": format_percent(roe),
         "roce": roce,
@@ -622,7 +743,7 @@ def get_quarterly_financials(ticker: str) -> list[dict[str, Any]]:
 
 @retry_on_transient_error(max_attempts=3)
 def get_technicals(ticker: str) -> dict[str, Any]:
-    """Fetch technical analysis metrics: RSI-14, MACD, volume trend, and support/resistance."""
+    """Fetch technical analysis metrics: RSI-14, MACD, volume trend, support/resistance, and breakout status."""
     t = yf.Ticker(ticker)
     res: dict[str, Any] = {
         "rsi_14": None,
@@ -633,6 +754,7 @@ def get_technicals(ticker: str) -> dict[str, Any]:
         "volume_trend": None,
         "support_level": None,
         "resistance_level": None,
+        "breakout_status": None,
     }
     outlook_trading_days = settings.outlook_months * _TRADING_DAYS_PER_MONTH
     try:
@@ -652,6 +774,33 @@ def get_technicals(ticker: str) -> dict[str, Any]:
             if not outlook_closes.empty:
                 res["support_level"] = round(float(outlook_closes.quantile(0.10)), 2)
                 res["resistance_level"] = round(float(outlook_closes.quantile(0.90)), 2)
+
+            # Breakout thresholding (0.5% clearance filter + volume confirmation)
+            curr_price = float(closes.iloc[-1])
+            res_level = res["resistance_level"]
+            sup_level = res["support_level"]
+            vol_trend = res["volume_trend"]
+            vol_20d = res["volume_20d_avg"]
+            last_vol = float(volumes.iloc[-1]) if not volumes.empty else 0.0
+            vol_confirmed = (vol_trend == "rising") or (vol_20d is not None and last_vol > vol_20d)
+
+            if res_level is not None and sup_level is not None:
+                if curr_price >= res_level * 1.005:
+                    if vol_confirmed:
+                        res["breakout_status"] = "Confirmed Technical Breakout (Clearance >= 0.5% with Volume Expansion)"
+                    else:
+                        res["breakout_status"] = "Unconfirmed Breakout (Clearance >= 0.5% on Subdued Volume)"
+                elif curr_price > res_level:
+                    res["breakout_status"] = "Testing Resistance Boundary (Within 0.5% Threshold)"
+                elif curr_price <= sup_level * 0.995:
+                    if vol_confirmed:
+                        res["breakout_status"] = "Confirmed Technical Breakdown (Clearance >= 0.5% with Volume Expansion)"
+                    else:
+                        res["breakout_status"] = "Unconfirmed Breakdown (Clearance >= 0.5% on Subdued Volume)"
+                elif curr_price < sup_level:
+                    res["breakout_status"] = "Testing Support Boundary (Within 0.5% Threshold)"
+                else:
+                    res["breakout_status"] = "Range-bound within Support/Resistance Band"
     except Exception as exc:
         logger.warning("get_technicals failed for %s: %s", ticker, exc)
     return res
@@ -659,9 +808,14 @@ def get_technicals(ticker: str) -> dict[str, Any]:
 
 @retry_on_transient_error(max_attempts=3)
 def get_ownership(ticker: str) -> dict[str, Any]:
-    """Fetch promoter, institutional, and public holding percentages."""
+    """Fetch promoter/insider, institutional, and public holding percentages with jurisdiction classification."""
     t = yf.Ticker(ticker)
-    return _extract_holdings(t)
+    currency = ""
+    try:
+        currency = t.info.get("currency", "")
+    except Exception:
+        pass
+    return _extract_holdings(t, ticker=ticker, currency=currency)
 
 
 # ---------------------------------------------------------------------------
@@ -671,7 +825,8 @@ def get_ownership(ticker: str) -> dict[str, Any]:
 def assemble_market_metrics(ticker: str, data: dict[str, Any]) -> MarketMetrics:
     """
     Assemble a MarketMetrics Pydantic object from granular dictionary data.
-    Automatically checks and populates unavailable_fields.
+    Automatically checks and populates unavailable_fields, reconciles 4Q TTM revenues,
+    and applies jurisdiction-aware metadata.
     """
     unavailable = []
     
@@ -688,7 +843,7 @@ def assemble_market_metrics(ticker: str, data: dict[str, Any]) -> MarketMetrics:
         elif isinstance(pt, PricePoint):
             trend.append(pt)
 
-    # Parse quarterly financials
+    # Parse quarterly financials & reconcile TTM revenue
     quarterly = []
     raw_qfin = data.get("quarterly_financials") or []
     for qf in raw_qfin:
@@ -699,6 +854,34 @@ def assemble_market_metrics(ticker: str, data: dict[str, Any]) -> MarketMetrics:
                 pass
         elif isinstance(qf, QuarterlyDataPoint):
             quarterly.append(qf)
+
+    # Reconcile trailing 4-quarter sum against revenue_ttm snapshot
+    revenue_ttm_val = data.get("revenue_ttm")
+    ttm_reconciliation_note = None
+    if len(quarterly) >= 4:
+        rev_sum_4q = sum(q.revenue for q in quarterly[:4] if q.revenue is not None)
+        if rev_sum_4q > 0:
+            if revenue_ttm_val is not None and abs(rev_sum_4q - revenue_ttm_val) / max(revenue_ttm_val, 1) > 0.02:
+                ttm_reconciliation_note = (
+                    f"Trailing 4-Quarter Sum: {format_currency_amount(rev_sum_4q, data.get('currency'))} "
+                    f"(vs SEC/filing snapshot: {format_currency_amount(revenue_ttm_val, data.get('currency'))})"
+                )
+                revenue_ttm_val = rev_sum_4q
+                data["revenue_ttm"] = rev_sum_4q
+                data["revenue_ttm_formatted"] = format_currency_amount(rev_sum_4q, data.get("currency"))
+
+    # Determine jurisdiction & banking flags
+    is_indian = ticker.upper().endswith(".NS") or ticker.upper().endswith(".BO") or (data.get("currency") or "").upper() in ("INR", "₹", "RS")
+    is_us = (not is_indian) and ((data.get("currency") or "").upper() in ("USD", "$") or "." not in ticker or any(ticker.upper().endswith(s) for s in (".N", ".O", ".A")))
+    is_bank = bool(data.get("is_bank_equity") or _is_depository_bank(data.get("sector"), data.get("industry")))
+
+    insider_label = data.get("insider_holding_label") or ("Insider Ownership (SEC Form 4/10-K)" if is_us else ("Promoter Holding" if is_indian else "Strategic / Insider Ownership"))
+    institutional_label = data.get("institutional_holding_label") or ("Institutional Ownership (SEC Form 13F)" if is_us else ("Institutional Holding (FII + DII)" if is_indian else "Institutional Holdings"))
+    jurisdiction_note = data.get("jurisdiction_filing_note") or (
+        "Institutional holdings aggregated from SEC Form 13F filings via Yahoo Finance. Insider holdings reflect Form 4/144 beneficial ownership."
+        if is_us else
+        ("Institutional figure represents combined FII+DII holding from exchange disclosures (SEBI filings)." if is_indian else "Holdings reported via public regulatory disclosures / Yahoo Finance.")
+    )
 
     # Check key field availability
     field_keys = [
@@ -712,6 +895,8 @@ def assemble_market_metrics(ticker: str, data: dict[str, Any]) -> MarketMetrics:
         "promoter_holding_pct", "fii_holding_pct"
     ]
     for k in field_keys:
+        if is_bank and k in ("gross_margin", "ev_ebitda"):
+            continue
         if data.get(k) is None:
             unavailable.append(k)
 
@@ -724,6 +909,13 @@ def assemble_market_metrics(ticker: str, data: dict[str, Any]) -> MarketMetrics:
         currency=data.get("currency"),
         sector=data.get("sector"),
         industry=data.get("industry"),
+        is_us_equity=is_us,
+        is_bank_equity=is_bank,
+        insider_holding_label=insider_label,
+        institutional_holding_label=institutional_label,
+        jurisdiction_filing_note=jurisdiction_note,
+        ttm_reconciliation_note=ttm_reconciliation_note,
+        breakout_status=data.get("breakout_status"),
         current_price=data.get("current_price"),
         current_price_formatted=data.get("current_price_formatted") or format_number_amount(data.get("current_price")),
         fifty_day_ma=data.get("fifty_day_ma"),
@@ -749,7 +941,7 @@ def assemble_market_metrics(ticker: str, data: dict[str, Any]) -> MarketMetrics:
         ps_ratio=data.get("ps_ratio"),
         ps_ratio_formatted=data.get("ps_ratio_formatted") or format_number_amount(data.get("ps_ratio")),
         ev_ebitda=data.get("ev_ebitda"),
-        ev_ebitda_formatted=data.get("ev_ebitda_formatted") or format_number_amount(data.get("ev_ebitda")),
+        ev_ebitda_formatted=data.get("ev_ebitda_formatted") or (format_number_amount(data.get("ev_ebitda")) if not is_bank else "N/A (Depository Bank - Operating Interest)"),
         dividend_yield=data.get("dividend_yield"),
         dividend_yield_formatted=data.get("dividend_yield_formatted") or format_percent(data.get("dividend_yield")),
         eps_ttm=data.get("eps_ttm"),
@@ -757,7 +949,7 @@ def assemble_market_metrics(ticker: str, data: dict[str, Any]) -> MarketMetrics:
         revenue_ttm=data.get("revenue_ttm"),
         revenue_ttm_formatted=data.get("revenue_ttm_formatted") or format_currency_amount(data.get("revenue_ttm"), data.get("currency")),
         gross_margin=data.get("gross_margin"),
-        gross_margin_formatted=data.get("gross_margin_formatted") or format_percent(data.get("gross_margin")),
+        gross_margin_formatted=data.get("gross_margin_formatted") or (format_percent(data.get("gross_margin")) if not is_bank else "N/A (Depository Bank - No COGS)"),
         operating_margin=data.get("operating_margin"),
         operating_margin_formatted=data.get("operating_margin_formatted") or format_percent(data.get("operating_margin")),
         debt_to_equity=data.get("debt_to_equity"),
@@ -777,12 +969,12 @@ def assemble_market_metrics(ticker: str, data: dict[str, Any]) -> MarketMetrics:
         analyst_target_low_formatted=data.get("analyst_target_low_formatted") or format_number_amount(data.get("analyst_target_low")),
         analyst_recommendation=data.get("analyst_recommendation"),
         promoter_holding_pct=data.get("promoter_holding_pct"),
-        promoter_holding_pct_formatted=data.get("promoter_holding_pct_formatted") or format_percent(data.get("promoter_holding_pct")),
+        promoter_holding_pct_formatted=data.get("promoter_holding_pct_formatted") or format_percent(data.get("promoter_holding_pct"), is_pct_points=True),
         fii_holding_pct=data.get("fii_holding_pct"),
-        institutional_holding_pct_formatted=data.get("institutional_holding_pct_formatted") or format_percent(data.get("fii_holding_pct")),
+        institutional_holding_pct_formatted=data.get("institutional_holding_pct_formatted") or format_percent(data.get("fii_holding_pct"), is_pct_points=True),
         dii_holding_pct=data.get("dii_holding_pct"),
         public_holding_pct=data.get("public_holding_pct"),
-        public_holding_pct_formatted=data.get("public_holding_pct_formatted") or format_percent(data.get("public_holding_pct")),
+        public_holding_pct_formatted=data.get("public_holding_pct_formatted") or format_percent(data.get("public_holding_pct"), is_pct_points=True),
         quarterly_financials=quarterly,
         outlook_months=settings.outlook_months,
         outlook_high=data.get("outlook_high"),

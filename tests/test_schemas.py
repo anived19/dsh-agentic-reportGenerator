@@ -152,3 +152,27 @@ def test_quarterly_data_gap_note_schema():
         data_gap_note="A prior quarter may be missing from source data (yfinance).",
     )
     assert q.data_gap_note == "A prior quarter may be missing from source data (yfinance)."
+
+
+def test_numeric_drift_scrubbing():
+    from harness.synthesis import _check_and_scrub_numeric_drift
+    from schemas import MarketMetrics
+
+    metrics = MarketMetrics(
+        ticker="JPM",
+        company_name="JP Morgan Chase & Co.",
+        current_price=356.39,
+        current_price_formatted="$356.39",
+        market_cap=947350000000.0,
+        market_cap_formatted="$947.35B",
+    )
+    tainted_md = (
+        "JPMorgan closed at $356.39 with market cap of $947.35B. "
+        "However, an analyst estimated share target of $599.99 and previous close of $123.45."
+    )
+    cleaned_md = _check_and_scrub_numeric_drift(tainted_md, metrics)
+    assert "$356.39" in cleaned_md
+    assert "$947.35B" in cleaned_md
+    assert "$599.99" not in cleaned_md
+    assert "$123.45" not in cleaned_md
+    assert "[figure unavailable — not independently verified]" in cleaned_md

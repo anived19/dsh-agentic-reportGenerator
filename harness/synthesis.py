@@ -77,13 +77,12 @@ _SECTION_HEADINGS: dict[str, str] = {
 # Each returns a plain-English instruction string fed to the Chief Editor.
 # ---------------------------------------------------------------------------
 
-def _instr_executive_summary(outlook_label: str, **kwargs) -> str:
+def _instr_executive_summary(outlook_label: str, market_metrics: Optional[MarketMetrics] = None, **kwargs) -> str:
+    breakout_text = f"breakout status '{market_metrics.breakout_status}'" if market_metrics and market_metrics.breakout_status else "range-bound/breakout positioning"
     return (
         "Write a concise Executive Summary (3–5 sentences) covering: the company's "
         "current market position, synthesized fundamental vs technical stance, primary driver of near-term outlook, "
-        "and technical positioning (noting 'Technical Breakout' if Current Price > Resistance, "
-        "'Technical Breakdown' if Current Price < Support, or noting that the price is trading range-bound "
-        "within its statistical support and resistance band if Support <= Current Price <= Resistance).\n"
+        f"and technical positioning (incorporating {breakout_text}).\n"
         "CRITICAL RECONCILIATION RULE: Cross-verify news sentiment against technical trend flags. "
         "If news sentiment is Bullish but the price is trading significantly below its 200-day MA or RSI/MACD shows selling pressure, "
         "synthesize this accurately (e.g. 'Attractive fundamental valuation amidst medium-term technical consolidation/pullback') "
@@ -109,14 +108,26 @@ def _instr_financial_highlights(outlook_label: str, **kwargs) -> str:
         f"Source note on table caption: '(Source: Yahoo Finance via yfinance)'"
     )
 
-def _instr_fundamentals_deep_dive(outlook_label: str, **kwargs) -> str:
+def _instr_fundamentals_deep_dive(outlook_label: str, market_metrics: Optional[MarketMetrics] = None, **kwargs) -> str:
+    is_bank = market_metrics and market_metrics.is_bank_equity
+    dte_guidance = (
+        "   For Debt-to-Equity: Depository and commercial banks are governed by Tier 1 capital regulations and do not report corporate Debt/Equity; use debt_to_equity_formatted."
+        if is_bank else
+        "   For Debt-to-Equity: use debt_to_equity_formatted (e.g. '0.10x (10.21%)'). Note in the narrative that corporate leverage is expressed as a ratio (e.g. 0.10x indicates negligible debt burden, where 10.21% is the raw debt-to-equity percentage). Never describe a company with 0.10x D/E as heavily leveraged!"
+    )
+    reconcil_guidance = (
+        f"   TTM RECONCILIATION NOTE: {market_metrics.ttm_reconciliation_note}\n"
+        if market_metrics and market_metrics.ttm_reconciliation_note else ""
+    )
+
     return (
         "Write a Fundamentals Deep-Dive section with three sub-tables:\n"
         "1. Key Metrics table (Metric | Value | Notes): EPS (TTM), Dividend Yield, "
         "   Debt-to-Equity, Return on Equity (ROE), Return on Capital Employed (ROCE). "
         "   CRITICAL UNIT FORMATTING: Always use formatted percentage strings for ROE, ROCE, and Dividend Yield "
         "   (e.g. roe_formatted '47.74%', roce_formatted '54.93%', dividend_yield_formatted '2.75%'). "
-        "   Use eps_ttm_formatted and debt_to_equity_formatted (e.g. '10.21'). Never output raw fractional decimals like '0.47743' or '0.5493'. "
+        "   Use eps_ttm_formatted and debt_to_equity_formatted.\n"
+        f"{dte_guidance}\n"
         "   Notes column: concise 2–4 word labels only. For any field in unavailable_fields, write 'data unavailable'.\n"
         "2. Analyst Consensus table (Metric | Value): Buy count, Hold count, Sell count, "
         "   Mean price target, High price target, Low price target, Recommendation. "
@@ -126,9 +137,10 @@ def _instr_fundamentals_deep_dive(outlook_label: str, **kwargs) -> str:
         "   or output raw unrounded decimal figures like '2456.122'. "
         "   If analyst fields are unavailable, say so. Cite Yahoo Finance as the source.\n"
         "3. Quarterly Financials table (Quarter | Revenue | Net Income | Rev QoQ % | Profit QoQ %): "
-        "   use the quarterly_financials array (newest first). "
+        "   use the quarterly_financials array (newest first). Ensure a 4-quarter rolling baseline is presented.\n"
+        f"{reconcil_guidance}"
         "   CRITICAL FORMATTING: For Revenue and Net Income, use revenue_formatted and net_income_formatted "
-        "   (e.g. 'Rs. 72,275 Cr', 'Rs. 13,349 Cr' — NEVER display unscaled 12-digit numbers). "
+        "   (e.g. 'Rs. 72,275 Cr', '$52.85B' — NEVER display unscaled 12-digit numbers). "
         "   For Rev QoQ % and Profit QoQ %, use revenue_growth_qoq_formatted and profit_growth_qoq_formatted "
         "   (e.g. '+2.23%', '-2.69%', or 'data unavailable'). Never omit the '+' or '-' sign or '%' symbol. "
         "   If Net Income exceeds Revenue in a quarter (due to exceptional one-off gains, demergers, or discontinued operations), "
@@ -138,52 +150,73 @@ def _instr_fundamentals_deep_dive(outlook_label: str, **kwargs) -> str:
         "   Source note: '(Source: Yahoo Finance via yfinance)'"
     )
 
-def _instr_technicals(outlook_label: str, **kwargs) -> str:
+def _instr_technicals(outlook_label: str, market_metrics: Optional[MarketMetrics] = None, **kwargs) -> str:
+    breakout_val = market_metrics.breakout_status if market_metrics and market_metrics.breakout_status else None
+    breakout_note = f"\n- Calculated Breakout Assessment: '{breakout_val}' (Price vs Support/Resistance with 0.5% clearance filter and volume expansion check)." if breakout_val else ""
     return (
         "Write a Technical Analysis section covering:\n"
         "- RSI-14: state the exact value, then interpret (>70 overbought, <30 oversold, 30–70 neutral). "
         "  These levels are statistical reference points, not trading signals.\n"
         "- MACD (12/26/9): state line, signal, and histogram values. "
         "  Interpret as bullish/bearish momentum only if the numbers clearly support it.\n"
-        "- Volume trend: state whether volume is rising, falling, or flat vs. the 60-day average, "
+        "- Volume trend: state whether volume is rising, falling, or flat vs. the 20-day average, "
         "  and what that implies in context of the price direction.\n"
         f"- Support & Resistance: state the derived levels (10th/90th percentile of the "
         f"  {outlook_label.lower()} price range). Note: 'These are statistically derived "
         f"  reference levels, not broker recommendations.'\n"
-        "- Logical Breakout/Breakdown Check: compare Current Price to Support and Resistance levels. "
-        "  * If Current Price > Resistance: explicitly identify this as a 'Technical Breakout'. "
-        "  * If Current Price < Support: explicitly identify this as a 'Technical Breakdown'. "
-        "  * If Support <= Current Price <= Resistance: state that price trades within its normal statistical channel between support and resistance. NEVER claim a 'Technical Breakdown' or 'Technical Breakout' when the price is between support and resistance!\n"
+        "- Breakout/Breakdown Threshold Check: "
+        "  * Confirmed Technical Breakout requires Current Price >= Resistance * 1.005 (0.5% clearance) AND volume confirmation. "
+        "  * If price is above resistance but within 0.5%, classify as 'Testing Resistance Boundary'. "
+        "  * Confirmed Technical Breakdown requires Current Price <= Support * 0.995 AND volume expansion. "
+        "  * If Support <= Current Price <= Resistance: state price is trading within its normal statistical channel. "
+        "    NEVER claim a breakout or breakdown when price is between support and resistance!"
+        f"{breakout_note}\n"
         "For any unavailable technical field, state it explicitly — do not omit or estimate."
     )
 
-def _instr_holdings(outlook_label: str, **kwargs) -> str:
+def _instr_holdings(outlook_label: str, market_metrics: Optional[MarketMetrics] = None, **kwargs) -> str:
+    is_us = market_metrics and market_metrics.is_us_equity
+    insider_label = market_metrics.insider_holding_label if market_metrics and market_metrics.insider_holding_label else ("Insider Ownership (SEC Form 4/10-K)" if is_us else "Promoter Holding")
+    inst_label = market_metrics.institutional_holding_label if market_metrics and market_metrics.institutional_holding_label else ("Institutional Ownership (SEC Form 13F)" if is_us else "Institutional Holding (FII + DII)")
+    filing_note = market_metrics.jurisdiction_filing_note if market_metrics and market_metrics.jurisdiction_filing_note else (
+        "Institutional holdings aggregated from SEC Form 13F filings via Yahoo Finance. Insider holdings reflect Form 4/144 beneficial ownership."
+        if is_us else
+        "Institutional figure is the combined FII+DII total as reported by Yahoo Finance. Individual FII and DII breakdown requires BSE/NSE exchange filings."
+    )
+
     return (
         "Write an Ownership & Holdings section:\n"
-        "- Table: Holder Category | % Held. Rows: Promoter/Insider, Institutional "
-        "  (combined FII+DII — note Yahoo Finance does not break these out separately), Public.\n"
+        f"- Table: Holder Category | % Held. Rows: {insider_label}, {inst_label}, Public Float.\n"
         "- Use promoter_holding_pct_formatted, institutional_holding_pct_formatted, and public_holding_pct_formatted "
-        "  (e.g. '71.80%', '17.45%', '10.75%'). The sum must equal 100.00%.\n"
-        "- For each unavailable field, write 'data unavailable'.\n"
-        "- Add a one-sentence note: 'Institutional figure is the combined FII+DII total "
-        "  as reported by Yahoo Finance. Individual FII and DII breakdown requires "
-        "  BSE/NSE exchange filings and is not available through this data source.'\n"
+        "  (e.g. '0.39%', '75.83%', '23.78%' or '71.80%', '17.45%', '10.75%'). The sum of the percentages MUST mathematically equal 100.00%.\n"
+        "- JURISDICTION & REGULATORY ACCURACY: For US equities (e.g. JPM, AAPL), NEVER use Indian SEBI terminology like 'Promoter Holding' or 'BSE/NSE exchange filings'. "
+        "  Use SEC terminology (Form 13F institutional holdings, Form 4 insider ownership).\n"
+        f"- Footnote / Disclosures: '{filing_note}'\n"
         "Source: '(Source: Yahoo Finance via yfinance)'"
     )
 
-def _instr_valuation_analysis(outlook_label: str, **kwargs) -> str:
+def _instr_valuation_analysis(outlook_label: str, market_metrics: Optional[MarketMetrics] = None, **kwargs) -> str:
+    is_bank = market_metrics and market_metrics.is_bank_equity
+    bank_note = (
+        "\nBANKING METRIC RULE: For depository / commercial banks, Gross Margin is 'N/A (Depository Bank - No COGS)' "
+        "and EV/EBITDA is 'N/A (Depository Bank - Operating Interest)'. Traditional depository institutions do not incur standard Cost of Goods Sold (COGS), "
+        "and interest expense is an operational line item rather than a financing cost, rendering Enterprise Value and EBITDA structurally inapplicable. "
+        "Explain this in the table notes or narrative.\n"
+        if is_bank else ""
+    )
+
     return (
         "Write a Valuation Analysis table: Metric | Value | Notes. "
         "Rows: P/E (Trailing), P/E (Forward), Price-to-Book, Price-to-Sales, "
         "EV/EBITDA, Dividend Yield, EPS (TTM), Revenue (TTM), Gross Margin, "
         "Operating Margin.\n"
+        f"{bank_note}"
         "CRITICAL FORMATTING RULES:\n"
         "- Valuation multiples: copy pe_ratio_formatted, forward_pe_formatted, pb_ratio_formatted, "
-        "  ps_ratio_formatted, ev_ebitda_formatted (e.g. '17.15', '14.54', '7.79', '3.10', '11.40') — "
-        "  never output raw unrounded floats like '17.152199'.\n"
-        "- Percentage ratios: copy gross_margin_formatted, operating_margin_formatted, and dividend_yield_formatted "
-        "  (e.g. '40.39%', '23.96%', '2.75%') — never output raw decimal fractions like '0.40389' or '0.23963'.\n"
-        "- Revenue (TTM): copy revenue_ttm_formatted (e.g. 'Rs. 2.76 Lakh Cr' or '$380.00B').\n"
+        "  ps_ratio_formatted, ev_ebitda_formatted — never output raw unrounded floats like '17.152199'.\n"
+        "- Percentage ratios: copy gross_margin_formatted, operating_margin_formatted, and dividend_yield_formatted — "
+        "  never output raw decimal fractions like '0.40389' or '0.23963'.\n"
+        "- Revenue (TTM): copy revenue_ttm_formatted (e.g. 'Rs. 2.76 Lakh Cr' or '$194.91B').\n"
         "- ANTI-WRAPPING RULE (TABLE CELL ECONOMY): Notes column must ONLY contain short 2-4 word factual notes (e.g. 'below 5yr avg', 'in line with sector'). "
         "  NEVER place full sentences, analyst commentary, or URL citations ([Source: ...]) inside table cells! "
         "  All analyst quotes, valuation narratives, and URL citations MUST be placed in dedicated standard paragraphs or bullet points under Market Sentiment & News / Key Catalysts.\n"
@@ -252,6 +285,7 @@ _SECTION_INSTRUCTION_MAP = {
 def _build_section_instructions(
     report_type: ReportType,
     outlook_label: str,
+    market_metrics: Optional[MarketMetrics] = None,
     report_spec: Optional[ReportSpec] = None,
     sentiment_findings: Optional[SentimentFindings] = None,
     editorial_goal: Optional[str] = None,
@@ -285,7 +319,7 @@ def _build_section_instructions(
             else:
                 instruction_fn = _SECTION_INSTRUCTION_MAP.get(spec.key)
                 if instruction_fn:
-                    base_instruction = instruction_fn(outlook_label, sentiment_findings=sentiment_findings)
+                    base_instruction = instruction_fn(outlook_label, market_metrics=market_metrics, sentiment_findings=sentiment_findings)
                 else:
                     # Dynamic instruction for custom section
                     sec_title = spec.key.replace("_", " ").title()
@@ -349,37 +383,69 @@ def _build_section_instructions(
         heading = _SECTION_HEADINGS.get(section_key, f"## {section_key.replace('_', ' ').title()}")
         heading = heading.replace("{n}", str(outlook_label.split("-")[0]))
         instruction_fn = _SECTION_INSTRUCTION_MAP.get(section_key)
-        instruction = instruction_fn(outlook_label, sentiment_findings=sentiment_findings) if instruction_fn else ""
+        instruction = instruction_fn(outlook_label, market_metrics=market_metrics, sentiment_findings=sentiment_findings) if instruction_fn else ""
         lines.append(f"\n{heading}\n{instruction}")
 
     return "\n".join(lines)
 
 
-def _check_numeric_fidelity(markdown_body: str, market_metrics: MarketMetrics) -> None:
+def _check_and_scrub_numeric_drift(markdown_body: str, market_metrics: MarketMetrics) -> str:
     """
-    Lightweight deterministic check for numeric fidelity.
-    Searches markdown_body for currency patterns and warns if figures drift from formatted values.
+    Deterministic check and enforcement for numeric fidelity.
+    Searches markdown_body for currency patterns and scrubs unverified/hallucinated figures.
     """
-    expected_formatted = set()
-    if market_metrics.market_cap_formatted:
-        expected_formatted.add(market_metrics.market_cap_formatted.strip())
-    if market_metrics.revenue_ttm_formatted:
-        expected_formatted.add(market_metrics.revenue_ttm_formatted.strip())
+    known_tokens = set()
+
+    for k, v in market_metrics.model_dump().items():
+        if isinstance(v, str):
+            known_tokens.add(v.strip())
+            bare = re.sub(r"^[^\d]+", "", v.strip())
+            if bare:
+                known_tokens.add(bare)
+        elif isinstance(v, (int, float)) and not isinstance(v, bool):
+            known_tokens.add(f"{v:.2f}")
+            known_tokens.add(str(v))
+        elif isinstance(v, list):
+            for item in v:
+                if isinstance(item, dict):
+                    for subk, subv in item.items():
+                        if isinstance(subv, str):
+                            known_tokens.add(subv.strip())
+                        elif isinstance(subv, (int, float)) and not isinstance(subv, bool):
+                            known_tokens.add(f"{subv:.2f}")
+        elif isinstance(v, dict):
+            for subk, subv in v.items():
+                if isinstance(subv, (int, float)) and not isinstance(subv, bool):
+                    known_tokens.add(f"{subv:.2f}")
+                elif isinstance(subv, str):
+                    known_tokens.add(subv.strip())
 
     currency_matches = re.findall(r"(?:Rs\.?|₹|\$)\s*\d[\d,]*\.\d{2}", markdown_body)
-    for match in currency_matches:
+    for match in set(currency_matches):
         is_known = False
-        if market_metrics.current_price and f"{market_metrics.current_price:.2f}" in match:
-            is_known = True
-        for exp in expected_formatted:
-            if match in exp or exp in match:
+        clean_match = match.strip()
+        bare_num = re.sub(r"^[^\d]+", "", clean_match).replace(",", "")
+        try:
+            val_f = float(bare_num)
+        except ValueError:
+            val_f = None
+
+        for token in known_tokens:
+            if clean_match in token or token in clean_match:
                 is_known = True
                 break
-        if not is_known and market_metrics.market_cap_formatted and match not in market_metrics.market_cap_formatted:
+            if val_f is not None and f"{val_f:.2f}" in token:
+                is_known = True
+                break
+
+        if not is_known:
             logger.warning(
-                "Potential numeric drift in Chief Editor Markdown: found '%s' which does not match known formatted metrics (%s)",
-                match, expected_formatted
+                "Potential numeric drift in Chief Editor Markdown: scrubbing unverified figure '%s'",
+                match
             )
+            markdown_body = markdown_body.replace(match, "[figure unavailable — not independently verified]")
+
+    return markdown_body
 
 
 def run_chief_editor(
@@ -399,6 +465,7 @@ def run_chief_editor(
     section_instruction = _build_section_instructions(
         report_type,
         outlook_label,
+        market_metrics=market_metrics,
         report_spec=report_spec,
         sentiment_findings=sentiment_findings,
         editorial_goal=effective_goal,
@@ -454,7 +521,7 @@ def run_chief_editor(
     if not markdown_body:
         raise ValueError("Chief Editor returned empty output — check the model response/safety filters")
 
-    _check_numeric_fidelity(markdown_body, market_metrics)
+    markdown_body = _check_and_scrub_numeric_drift(markdown_body, market_metrics)
 
     logger.info("Chief Editor produced %d characters of Markdown", len(markdown_body))
     return markdown_body

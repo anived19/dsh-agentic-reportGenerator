@@ -180,3 +180,121 @@ def test_mcp_async_call_tool_error_handling():
     assert len(contents) == 1
     data = json.loads(contents[0].text)
     assert "error" in data
+
+
+def test_aml_sweep_dispatch_produces_valid_state(monkeypatch):
+    """Regression test: run_structured_aml_sweep's list[dict] return shape
+    must round-trip through _dispatch_tool without crashing, and state.aml_result
+    must be a valid AMLScreeningResult with entities_screened."""
+    from unittest.mock import MagicMock
+    from harness.mcp_server import _dispatch_tool, session_mgr
+    from schemas import AMLFinding, AMLSeverity
+
+    mock_findings = [
+        AMLFinding(
+            entity_screened="Test Corp",
+            source_name="OFAC SDN",
+            finding_summary="No confirmed match.",
+            severity=AMLSeverity.NONE,
+            source_url="https://sanctionssearch.ofac.treas.gov",
+        ).model_dump()
+    ]
+
+    monkeypatch.setattr("tools.aml_tools.run_structured_aml_sweep", lambda **kw: mock_findings)
+
+    result = _dispatch_tool("run_structured_aml_sweep", {"entity_name": "Test Corp", "ticker": "TEST.NS"})
+    assert isinstance(result, list)
+    assert session_mgr.state.aml_result is not None
+    assert "Test Corp" in session_mgr.state.aml_result.entities_screened
+    assert len(session_mgr.state.aml_result.findings) == 1
+
+
+def test_session_state_hydration_on_restart(tmp_path, monkeypatch):
+    """Regression test: SessionStateManager hydrates all previous state when session_state.json exists."""
+    from harness.mcp_server import SessionStateManager
+    from config import settings
+
+    session_id = "test_hydrate_session_123"
+    s_dir = tmp_path / "sessions" / session_id
+    s_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(settings, "cache_dir", tmp_path)
+
+    state_data = {
+        "session_id": session_id,
+        "ticker": "JPM",
+        "company_name": "JPMorgan Chase & Co.",
+        "user_query": "report on jpmorgan",
+        "report_type": "general",
+        "turn": 5,
+        "market_data": {"current_price": 356.39, "pe_ratio": 15.06},
+        "custom_metrics": {},
+        "category_attempts": {"price_snapshot": 1, "news_searches": 2},
+        "tool_log": [
+            {"turn": 1, "tool_name": "get_price_snapshot", "arguments": {"ticker": "JPM"}, "result_summary": "ok", "ok": True}
+        ],
+    }
+    (s_dir / "session_state.json").write_text(json.dumps(state_data), encoding="utf-8")
+
+    mgr = SessionStateManager(session_id=session_id)
+    assert mgr.state.ticker == "JPM"
+    assert mgr.state.turn == 5
+    assert mgr.state.market_data.get("pe_ratio") == 15.06
+    assert mgr.category_attempts.get("news_searches") == 2
+    assert len(mgr.state.tool_log) == 1
+
+
+def test_validate_data_explicitly_reports_missing_news_searches():
+    """Verify validate_data includes news_searches in missing list when min_news_searches is not met."""
+    session_mgr.state.report_type = ReportType.GENERAL
+    session_mgr.state.market_data = {
+        "current_price": 356.39,  # required for general
+    }
+    session_mgr.category_attempts["price_snapshot"] = 1
+    session_mgr.category_attempts["news_searches"] = 0
+
+    val_res = _dispatch_tool("validate_data", {})
+    assert val_res["satisfied"] is False
+    assert any("news_searches" in item for item in val_res["missing"])
+    assert "news_searches" in val_res["notes"]
+
+
+def test_disambiguation_state_gate_and_lifecycle_reset(tmp_path, monkeypatch):
+    """
+    Verify that:
+    1. resolve_entity with multiple candidates sets state.status = AWAITING_USER and clears ticker.
+    2. Data fetching tools are blocked while AWAITING_USER.
+    3. ask_user resolves the entity, resets candidate_entities to [], and transitions status back to RUNNING.
+    4. Subsequent data fetching proceeds without errors.
+    """
+    from harness.mcp_server import _dispatch_tool, session_mgr
+    from schemas import AgentStatus
+
+    # 1. Resolve entity with multiple candidates
+    res = _dispatch_tool("resolve_entity", {"query": "tata"})
+    assert res["candidate_count"] > 1
+    assert session_mgr.state.status == AgentStatus.AWAITING_USER
+    assert session_mgr.state.ticker is None
+    assert len(session_mgr.state.candidate_entities) > 1
+
+    # 2. Block data fetching tools
+    blocked_res = _dispatch_tool("get_price_snapshot", {})
+    assert "error" in blocked_res
+    assert "Entity disambiguation required" in blocked_res["error"]
+
+    # 3. Simulate ask_user selection with instantaneous IPC response
+    def fake_sleep(dur):
+        resp_file = session_mgr.session_dir / "ask_user_response.json"
+        resp_file.write_text(json.dumps({"selected": "Tata Motors Limited (TATAMOTORS.NS)"}), encoding="utf-8")
+
+    monkeypatch.setattr("time.sleep", fake_sleep)
+    ask_res = _dispatch_tool("ask_user", {"question": "Which entity?", "options": ["Tata Motors Limited (TATAMOTORS.NS)"]})
+    assert session_mgr.state.ticker == "TATAMOTORS.NS"
+    assert session_mgr.state.status == AgentStatus.RUNNING
+    assert session_mgr.state.candidate_entities == []
+
+    # 4. Data fetching is now unlocked
+    with patch("tools.finance_tools.get_price_snapshot") as mock_price:
+        mock_price.return_value = {"current_price": 750.0, "currency": "INR"}
+        price_res = _dispatch_tool("get_price_snapshot", {})
+        assert price_res.get("current_price") == 750.0
+

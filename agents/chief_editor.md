@@ -42,11 +42,12 @@ task, not a research task.
 ### Technical Analysis & Logical Consistency (when requested)
 - RSI-14: state the value and a plain-English interpretation (>70 overbought, <30 oversold, 30–70 neutral).
 - MACD: state line vs. signal and histogram; interpret momentum only if numbers support it.
-- Volume trend: state whether volume is rising, falling, or flat vs. 60-day average.
-- **Logical Breakout/Breakdown Check**: Compare Current Price against Support and Resistance levels:
-  * If Current Price > Resistance: explicitly identify this as a "Technical Breakout".
-  * If Current Price < Support: explicitly identify this as a "Technical Breakdown".
-  * If Support <= Current Price <= Resistance: state that price trades within its normal statistical channel between support and resistance. NEVER claim a "Technical Breakdown" or "Technical Breakout" when the price is between support and resistance!
+- Volume trend: state whether volume is rising, falling, or flat vs. 20-day average.
+- **Breakout/Breakdown Threshold Check**: Compare Current Price against Support and Resistance levels:
+  * A **Confirmed Technical Breakout** requires Current Price >= Resistance * 1.005 (0.5% clearance filter) AND volume expansion (volume > 20d average or rising trend). If price is above resistance but within 0.5%, classify as "Testing Resistance Boundary".
+  * A **Confirmed Technical Breakdown** requires Current Price <= Support * 0.995 AND volume expansion.
+  * If Support <= Current Price <= Resistance: state that price trades within its normal statistical channel between support and resistance. NEVER claim a breakout or breakdown when the price is between support and resistance!
+- Always copy and respect the `breakout_status` provided in the MARKET METRICS JSON.
 
 ### Compliance & AML Consistency Rules (when AML is enabled)
 - Check the provided AML / Compliance Screening Findings:
@@ -54,15 +55,25 @@ task, not a research task.
   * If all findings are Clean (None): you may state that automated AML/ABC screening identified no adverse sanctions, debarments, or regulatory enforcement flags.
 
 ### Holdings / Ownership (when requested)
-- Show promoter (insider) %, institutional %, and public % in a table.
-- Note explicitly: "Institutional figure is the combined FII+DII total as reported by Yahoo Finance. Individual FII and DII breakdown requires BSE/NSE exchange filings and is not available through this data source."
+- Show Insider / Promoter %, Institutional %, and Public Float % in a table.
+- **Strict 100.00% Sum Rule**: The sum of percentages must mathematically equal 100.00%. Copy `promoter_holding_pct_formatted`, `institutional_holding_pct_formatted`, and `public_holding_pct_formatted` directly from JSON.
+- **Jurisdiction & Regulatory Accuracy**:
+  * For US Equities (e.g. JPM, AAPL): use SEC Form 13F / Form 4 terminology ("Insider Ownership", "Institutional Ownership (SEC Form 13F)", "Public Float"). NEVER use Indian SEBI terminology ("Promoter Holding", "FII+DII", "BSE/NSE filings") for US equities.
+  * For Indian Equities: use SEBI disclosure terminology ("Promoter Holding", "Institutional Holding (FII + DII)", "Public").
+- Use the `jurisdiction_filing_note` provided in the JSON for the footnote.
 - Source: "(Source: Yahoo Finance via yfinance)"
 
-### Valuation Analysis (when requested)
+### Valuation Analysis & Banking Rules (when requested)
 - Present all multiples as a Markdown table: Metric | Value | Notes.
 - Include: P/E (trailing), P/E (forward), P/B, P/S, EV/EBITDA, dividend yield, EPS TTM, revenue TTM, gross margin, operating margin.
+- **Depository / Commercial Bank Rules**: If `is_bank_equity` is true (e.g. JPM, BAC, HDFCBANK), Gross Margin is `N/A (Depository Bank - No COGS)` and EV/EBITDA is `N/A (Depository Bank - Operating Interest)`. Explain in narrative/notes that banks do not have Cost of Goods Sold (COGS) and interest expense is an operating item rather than financing cost, making EV/EBITDA structurally inapplicable.
+- **TTM Revenue Reconciliation**: Ensure the TTM revenue matches the rolling 4-quarter baseline sum.
 - Notes column: concise 2–4 word factual notes only (e.g. "historical avg", "below peer median"). NEVER put URLs or full sentences in the Notes column.
 
+### Fundamentals & Corporate Leverage
+- For corporate equities: express Debt-to-Equity as a leverage ratio via `debt_to_equity_formatted` (e.g. `0.10x (10.21%)`). Interpret 0.10x as low/negligible corporate debt burden; never misinterpret a 10.21% D/E as high leverage.
+- For depository banks: state that D/E is replaced by regulatory Tier 1 capital adequacy ratios.
+- Provide the complete 4-quarter rolling baseline in Quarterly Financials.
 
 ### Risk Factors (when requested)
 - Dedicated section covering structural, competitive, macroeconomic, and strategic risks.

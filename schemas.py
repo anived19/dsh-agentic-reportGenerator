@@ -99,11 +99,13 @@ def format_number_amount(amount: Optional[float], decimals: int = 2) -> Optional
     return f"{amount:,.{decimals}f}"
 
 
-def format_percent(val: Optional[float], include_sign: bool = False, decimals: int = 2) -> Optional[str]:
+def format_percent(val: Optional[float], include_sign: bool = False, decimals: int = 2, is_pct_points: bool = False) -> Optional[str]:
     """Format decimal fraction or percentage into string with % sign (e.g. 0.40389 -> '40.39%')."""
     if val is None:
         return None
-    if abs(val) <= 1.0:
+    if is_pct_points:
+        pct = val
+    elif abs(val) <= 1.0:
         pct = val * 100.0
     else:
         pct = val
@@ -194,6 +196,15 @@ class MarketMetrics(BaseModel):
 
     # --- Quarterly financials (last 4 quarters, computed in finance_tools) ---
     quarterly_financials: list[QuarterlyDataPoint] = Field(default_factory=list)
+
+    # --- Jurisdiction & Industry Profile ---
+    is_us_equity: bool = Field(default=False, description="True for US-domiciled equities (SEC regulated).")
+    is_bank_equity: bool = Field(default=False, description="True for depository / commercial banks (no COGS, operating interest).")
+    insider_holding_label: str = Field(default="Promoter / Insider", description="Jurisdiction-appropriate label for insider holdings.")
+    institutional_holding_label: str = Field(default="Institutional (Combined)", description="Jurisdiction-appropriate label for institutional holdings.")
+    jurisdiction_filing_note: Optional[str] = Field(default=None, description="Regulatory filing citation note (e.g. SEC 13F/10-K vs BSE/NSE).")
+    ttm_reconciliation_note: Optional[str] = Field(default=None, description="Reconciliation note between trailing 4Q sum and snapshot revenue.")
+    breakout_status: Optional[str] = Field(default=None, description="Detailed technical breakout classification (e.g. Confirmed Breakout vs Testing Resistance).")
 
     # --- Configurable outlook window ---
     outlook_months: int = Field(default=6, description="Number of months the price window covers.")

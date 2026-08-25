@@ -266,3 +266,152 @@ def test_custom_financial_metric_fcf_yield_and_spread():
     assert res_spread["status"] == "ok"
     assert res_spread["value"] == 7.0
     assert res_spread["formatted_value"] == "+7.00%"
+
+
+def test_to_pct_normalizer():
+    from tools.finance_tools import _to_pct
+
+    # Strings with %
+    assert _to_pct("0.39%") == 0.39
+    assert _to_pct("75.83%") == 75.83
+    assert _to_pct(" 100.0% ") == 100.0
+
+    # Numeric fractions (< 1.0)
+    assert _to_pct(0.0039) == 0.39
+    assert _to_pct(0.7583) == 75.83
+
+    # Numeric percentages (>= 1.0)
+    assert _to_pct(75.83) == 75.83
+    assert _to_pct(100.0) == 100.0
+
+    # Zero and None
+    assert _to_pct(0.0) == 0.0
+    assert _to_pct(None) is None
+
+
+def test_extract_holdings_jurisdiction_and_clamping():
+    from unittest.mock import MagicMock
+    from tools.finance_tools import _extract_holdings
+
+    # Mock US equity (JPM)
+    mock_jpm = MagicMock()
+    mock_jpm.major_holders = pd.DataFrame(
+        [
+            ["0.39%", "% of Shares Held by All Insider"],
+            ["75.83%", "% of Shares Held by Institutions"],
+        ],
+        columns=[0, 1],
+    )
+    mock_jpm.info = {"currency": "USD"}
+
+    res_jpm = _extract_holdings(mock_jpm, ticker="JPM", currency="USD")
+    assert res_jpm["is_us_equity"] is True
+    assert res_jpm["insider_holding_label"] == "Insider Ownership (SEC Form 4/10-K)"
+    assert res_jpm["promoter_holding_pct"] == 0.39
+    assert res_jpm["fii_holding_pct"] == 75.83
+    assert res_jpm["public_holding_pct"] == 23.78
+    # Sum must mathematically equal 100.00%
+    assert round(res_jpm["promoter_holding_pct"] + res_jpm["fii_holding_pct"] + res_jpm["public_holding_pct"], 2) == 100.00
+
+    # Mock Indian equity (TCS)
+    mock_tcs = MagicMock()
+    mock_tcs.major_holders = pd.DataFrame(
+        [
+            ["71.79%", "% of Shares Held by All Insider"],
+            ["17.46%", "% of Shares Held by Institutions"],
+        ],
+        columns=[0, 1],
+    )
+    mock_tcs.info = {"currency": "INR"}
+
+    res_tcs = _extract_holdings(mock_tcs, ticker="TCS.NS", currency="INR")
+    assert res_tcs["is_indian_equity"] is True
+    assert res_tcs["insider_holding_label"] == "Promoter Holding"
+    assert res_tcs["promoter_holding_pct"] == 71.79
+    assert res_tcs["fii_holding_pct"] == 17.46
+    assert res_tcs["public_holding_pct"] == 10.75
+    assert round(res_tcs["promoter_holding_pct"] + res_tcs["fii_holding_pct"] + res_tcs["public_holding_pct"], 2) == 100.00
+
+
+def test_banking_exclusions_and_debt_to_equity():
+    from unittest.mock import MagicMock, patch
+    from tools.finance_tools import get_valuation_multiples, get_fundamentals
+
+    # Depository bank mock
+    bank_info = {
+        "sector": "Financial Services",
+        "industry": "Banks - Diversified",
+        "currency": "USD",
+        "totalRevenue": 194910000000.0,
+        "trailingPE": 12.5,
+        "grossMargins": 0.0,
+        "enterpriseToEbitda": None,
+        "debtToEquity": None,
+    }
+    with patch("yfinance.Ticker") as mock_ticker_cls:
+        mock_instance = MagicMock()
+        mock_instance.info = bank_info
+        mock_instance.recommendations = None
+        mock_instance.recommendations_summary = None
+        mock_instance.analyst_price_targets = None
+        mock_ticker_cls.return_value = mock_instance
+
+        val_res = get_valuation_multiples("JPM")
+        assert val_res["is_bank_equity"] is True
+        assert val_res["gross_margin"] is None
+        assert "N/A (Depository Bank" in val_res["gross_margin_formatted"]
+        assert "N/A (Depository Bank" in val_res["ev_ebitda_formatted"]
+
+        fund_res = get_fundamentals("JPM")
+        assert fund_res["is_bank_equity"] is True
+        assert "Tier 1 Capital Governed" in fund_res["debt_to_equity_formatted"]
+
+    # Corporate equity mock (TCS with raw debtToEquity = 10.21 -> 0.10x)
+    corp_info = {
+        "sector": "Technology",
+        "industry": "Information Technology Services",
+        "currency": "INR",
+        "debtToEquity": 10.21,
+    }
+    with patch("yfinance.Ticker") as mock_ticker_cls:
+        mock_instance = MagicMock()
+        mock_instance.info = corp_info
+        mock_instance.recommendations = None
+        mock_instance.recommendations_summary = None
+        mock_instance.analyst_price_targets = None
+        mock_ticker_cls.return_value = mock_instance
+
+        fund_res = get_fundamentals("TCS.NS")
+        assert fund_res["debt_to_equity"] == 0.10
+        assert fund_res["debt_to_equity_formatted"] == "0.10x (10.21%)"
+
+
+def test_assemble_market_metrics_reconciliation():
+    from tools.finance_tools import assemble_market_metrics
+    from schemas import QuarterlyDataPoint
+    from datetime import date
+
+    # Trailing 4 quarters sum: 52.85 + 49.83 + 45.80 + 46.43 = 194.91B
+    # Snapshot: 186.33B
+    quarterly = [
+        QuarterlyDataPoint(quarter="Q4 FY25", quarter_date=date(2025, 12, 31), revenue=52850000000.0, revenue_formatted="$52.85B"),
+        QuarterlyDataPoint(quarter="Q3 FY25", quarter_date=date(2025, 9, 30), revenue=49830000000.0, revenue_formatted="$49.83B"),
+        QuarterlyDataPoint(quarter="Q2 FY25", quarter_date=date(2025, 6, 30), revenue=45800000000.0, revenue_formatted="$45.80B"),
+        QuarterlyDataPoint(quarter="Q1 FY25", quarter_date=date(2025, 3, 31), revenue=46430000000.0, revenue_formatted="$46.43B"),
+    ]
+    data = {
+        "company_name": "JPMorgan Chase & Co.",
+        "currency": "USD",
+        "sector": "Financial Services",
+        "industry": "Banks - Diversified",
+        "current_price": 240.0,
+        "revenue_ttm": 186330000000.0,
+        "quarterly_financials": [q.model_dump() for q in quarterly],
+    }
+    metrics = assemble_market_metrics("JPM", data)
+    assert metrics.is_bank_equity is True
+    assert metrics.is_us_equity is True
+    assert metrics.revenue_ttm == 194910000000.0
+    assert metrics.ttm_reconciliation_note is not None
+    assert "$194.91B" in metrics.ttm_reconciliation_note
+

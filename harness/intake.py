@@ -22,13 +22,13 @@ logger = logging.getLogger(__name__)
 
 _COMPANY_SYSTEM_PROMPT = (
     "Extract the company, group, or stock reference the user is asking about from their "
-    "request. Respond with ONLY the exact company or group name as plain text — "
+    "request. Respond with ONLY the exact company, ticker, or group name as plain text — "
     "no punctuation, no explanation, no surrounding quotes.\n\n"
-    "CRITICAL RULE: If the user refers to a conglomerate or business group (e.g. 'Tata', "
-    "'Adani', 'Reliance', 'Mahindra', 'Bajaj', 'Aditya Birla', 'HDFC', 'ICICI'), "
-    "output ONLY that exact group name (e.g. 'Tata', NOT 'Tata Consultancy Services' "
-    "or 'Tata Motors'). Do not invent, extrapolate, or guess a specific subsidiary — "
-    "disambiguation will be handled by the downstream system."
+    "CRITICAL RULES:\n"
+    "1. If the user mentions a specific company or ticker (e.g. 'TCS', 'Tata Motors', 'Tata Steel', "
+    "'Adani Ports', 'Infosys', 'JPMorgan', 'Apple', 'MSFT'), output that EXACT specific company/ticker.\n"
+    "2. If the user refers ONLY generally to an entire conglomerate or business group without specifying "
+    "a subsidiary (e.g. just 'Tata', 'Adani', 'Reliance', 'Mahindra', 'Bajaj'), output that exact group name."
 )
 
 _REPORT_TYPE_SYSTEM_PROMPT = (

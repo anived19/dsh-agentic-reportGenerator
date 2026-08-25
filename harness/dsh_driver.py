@@ -270,7 +270,9 @@ def run_dsh_orchestrator(
         )
 
     market_data = session_payload.get("market_data", {})
-    ticker = session_payload.get("ticker") or initial_company_ref or "TCS.NS"
+    ticker = session_payload.get("ticker") or initial_company_ref
+    if not ticker:
+        raise RuntimeError("DSH session completed without resolving a valid ticker symbol.")
     company_name = session_payload.get("company_name") or market_data.get("company_name") or ticker
 
     # Reconstruct ReportSpec

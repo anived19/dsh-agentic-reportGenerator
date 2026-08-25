@@ -101,7 +101,9 @@
       HARD RULES & EXECUTION FLOW:
 
       1. RESOLUTION: If the ticker is not yet resolved, call resolve_entity. If
-      >1 candidate is returned, immediately call ask_user. Do not guess.
+      >1 candidate is returned, you are strictly forbidden from picking an entity
+      yourself or calling any data-fetching tools. Your immediate NEXT tool call MUST
+      be ask_user presenting the candidates to the user. Do not guess.
 
       2. DATA GATHERING: Based on report_type and editorial_goal, dynamically
       call the required granular fetch tools.

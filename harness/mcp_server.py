@@ -14,6 +14,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sys
 import time
 from datetime import date
@@ -85,29 +86,75 @@ class SessionStateManager:
         # Load orchestrator config profiles for validation
         self.config_profiles = self._load_orchestrator_config()
 
-        # Initialize AgentState from session_init.json if present
+        state_file = self.session_dir / "session_state.json"
         init_file = self.session_dir / "session_init.json"
-        if init_file.exists():
-            try:
-                init_data = json.loads(init_file.read_text(encoding="utf-8"))
-                rep_type = ReportType(init_data.get("report_type", "general"))
-                self.state = AgentState(
-                    user_query=init_data.get("user_query", ""),
-                    company_reference=init_data.get("company_reference"),
-                    report_type=rep_type,
-                    editorial_goal=init_data.get("editorial_goal", "Standard Comprehensive Financial Analysis"),
-                    run_aml=init_data.get("run_aml", False),
-                    telemetry=RunTelemetry(tavily_calls_budget=5),
-                    status=AgentStatus.RUNNING,
-                )
-                if init_data.get("ticker"):
-                    self.state.ticker = init_data.get("ticker")
-                if init_data.get("company_name"):
-                    self.state.company_name = init_data.get("company_name")
-            except Exception as exc:
-                logger.warning("Could not load session_init.json: %s", exc)
-                self.state = self._default_state()
+
+        if state_file.exists():
+            self._hydrate_from_checkpoint(state_file)
+        elif init_file.exists():
+            self._hydrate_from_init(init_file)
         else:
+            self.state = self._default_state()
+
+    def _hydrate_from_checkpoint(self, state_file: Path) -> None:
+        """Hydrate full session state from persisted checkpoint on subprocess restart."""
+        try:
+            data = json.loads(state_file.read_text(encoding="utf-8"))
+            self.state = AgentState(
+                user_query=data.get("user_query", ""),
+                company_reference=data.get("company_reference"),
+                report_type=ReportType(data.get("report_type", "general")),
+                editorial_goal=data.get("editorial_goal", "Standard Comprehensive Financial Analysis"),
+                run_aml=data.get("run_aml", False),
+                telemetry=RunTelemetry(**data.get("telemetry", {"tavily_calls_budget": 5})),
+                status=AgentStatus.RUNNING,
+            )
+            self.state.ticker = data.get("ticker")
+            self.state.company_name = data.get("company_name")
+            self.state.turn = data.get("turn", 0)
+            self.state.market_data = data.get("market_data", {})
+            self.state.custom_metrics = data.get("custom_metrics", {})
+            self.state.candidate_entities = data.get("candidate_entities", [])
+            if data.get("report_spec"):
+                self.state.report_spec = ReportSpec.model_validate(data["report_spec"])
+            if data.get("sentiment_findings"):
+                self.state.sentiment_findings = SentimentFindings.model_validate(data["sentiment_findings"])
+            if data.get("aml_result"):
+                self.state.aml_result = AMLScreeningResult.model_validate(data["aml_result"])
+            if data.get("validation_result"):
+                self.validation_result = ValidationResult.model_validate(data["validation_result"])
+            self.state.tool_log = [ToolCallRecord.model_validate(t) for t in data.get("tool_log", [])]
+            self.category_attempts.update(data.get("category_attempts", {}))
+            logger.info("Hydrated session %s from checkpoint (turn=%s, %d market_data keys)",
+                        self.session_id, self.state.turn, len(self.state.market_data))
+        except Exception as exc:
+            logger.error("Checkpoint hydration failed, falling back to init: %s", exc)
+            init_file = self.session_dir / "session_init.json"
+            if init_file.exists():
+                self._hydrate_from_init(init_file)
+            else:
+                self.state = self._default_state()
+
+    def _hydrate_from_init(self, init_file: Path) -> None:
+        """Initialize AgentState from session_init.json payload."""
+        try:
+            init_data = json.loads(init_file.read_text(encoding="utf-8"))
+            rep_type = ReportType(init_data.get("report_type", "general"))
+            self.state = AgentState(
+                user_query=init_data.get("user_query", ""),
+                company_reference=init_data.get("company_reference"),
+                report_type=rep_type,
+                editorial_goal=init_data.get("editorial_goal", "Standard Comprehensive Financial Analysis"),
+                run_aml=init_data.get("run_aml", False),
+                telemetry=RunTelemetry(tavily_calls_budget=5),
+                status=AgentStatus.RUNNING,
+            )
+            if init_data.get("ticker"):
+                self.state.ticker = init_data.get("ticker")
+            if init_data.get("company_name"):
+                self.state.company_name = init_data.get("company_name")
+        except Exception as exc:
+            logger.warning("Could not load session_init.json: %s", exc)
             self.state = self._default_state()
 
     def _default_state(self) -> AgentState:
@@ -454,10 +501,18 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         from tools.ticker_resolver import resolve_entity
         query = arguments.get("query", "")
         candidates = resolve_entity(query)
-        state.candidate_entities = candidates
         if len(candidates) == 1:
+            state.candidate_entities = []
             state.ticker = candidates[0]["ticker"]
             state.company_name = candidates[0]["name"]
+            state.status = AgentStatus.RUNNING
+        elif len(candidates) > 1:
+            state.candidate_entities = candidates
+            state.ticker = None
+            state.status = AgentStatus.AWAITING_USER
+        else:
+            state.candidate_entities = []
+            state.status = AgentStatus.RUNNING
         session_mgr.checkpoint()
         return {
             "query": query,
@@ -514,17 +569,42 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
             selected = options[0]
             logger.warning("ask_user timed out; defaulting to %s", selected)
 
-        # Parse selected entity
-        for c in state.candidate_entities:
-            if c["ticker"] in selected or c["name"] in selected:
-                state.ticker = c["ticker"]
-                state.company_name = c["name"]
-                break
-        else:
-            if state.candidate_entities:
-                state.ticker = state.candidate_entities[0]["ticker"]
-                state.company_name = state.candidate_entities[0]["name"]
+        # Match selected entity
+        matched_candidate = None
+        ticker_match = re.search(r"\(([A-Za-z0-9\.\^=-]+)\)", selected)
+        extracted_sym = ticker_match.group(1).strip() if ticker_match else None
 
+        for c in state.candidate_entities:
+            if extracted_sym and c["ticker"].lower() == extracted_sym.lower():
+                matched_candidate = c
+                break
+            if c["ticker"].lower() in selected.lower() or c["name"].lower() in selected.lower():
+                matched_candidate = c
+                break
+
+        if matched_candidate:
+            state.ticker = matched_candidate["ticker"]
+            state.company_name = matched_candidate["name"]
+        elif extracted_sym:
+            state.ticker = extracted_sym
+            state.company_name = selected.split("(")[0].strip() or extracted_sym
+        elif selected.strip():
+            # If user typed a custom ticker/name
+            from tools.ticker_resolver import resolve_entity
+            typed_candidates = resolve_entity(selected.strip())
+            if typed_candidates:
+                state.ticker = typed_candidates[0]["ticker"]
+                state.company_name = typed_candidates[0]["name"]
+            else:
+                state.ticker = selected.strip()
+                state.company_name = selected.strip()
+        elif state.candidate_entities:
+            state.ticker = state.candidate_entities[0]["ticker"]
+            state.company_name = state.candidate_entities[0]["name"]
+
+        # Reset candidate entities & status to active running state
+        state.candidate_entities = []
+        state.status = AgentStatus.RUNNING
         session_mgr.checkpoint()
         return {
             "selected": selected,
@@ -532,9 +612,23 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
             "resolved_company_name": state.company_name,
         }
 
-    elif name == "get_price_snapshot":
+    # Helper guard for all data-fetching tools
+    if name in (
+        "get_price_snapshot", "get_valuation_multiples", "get_fundamentals",
+        "get_quarterly_financials", "get_technicals", "get_ownership",
+        "compute_custom_financial_metric"
+    ):
+        if state.status == AgentStatus.AWAITING_USER or (len(state.candidate_entities) > 1 and not state.ticker):
+            return {
+                "error": "Entity disambiguation required: multiple candidates exist. You MUST call ask_user before fetching market data.",
+                "candidates": state.candidate_entities,
+            }
+
+    if name == "get_price_snapshot":
         from tools.finance_tools import get_price_snapshot
-        ticker = arguments.get("ticker") or state.ticker or "TCS.NS"
+        ticker = arguments.get("ticker") or state.ticker
+        if not ticker:
+            return {"error": "No ticker specified or resolved. Call resolve_entity first."}
         session_mgr.category_attempts["price_snapshot"] += 1
         res = get_price_snapshot(ticker)
         state.market_data.update(res)
@@ -545,7 +639,9 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
 
     elif name == "get_valuation_multiples":
         from tools.finance_tools import get_valuation_multiples
-        ticker = arguments.get("ticker") or state.ticker or "TCS.NS"
+        ticker = arguments.get("ticker") or state.ticker
+        if not ticker:
+            return {"error": "No ticker specified or resolved. Call resolve_entity first."}
         session_mgr.category_attempts["valuation_multiples"] += 1
         res = get_valuation_multiples(ticker)
         state.market_data.update(res)
@@ -554,7 +650,9 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
 
     elif name == "get_fundamentals":
         from tools.finance_tools import get_fundamentals
-        ticker = arguments.get("ticker") or state.ticker or "TCS.NS"
+        ticker = arguments.get("ticker") or state.ticker
+        if not ticker:
+            return {"error": "No ticker specified or resolved. Call resolve_entity first."}
         session_mgr.category_attempts["fundamentals"] += 1
         res = get_fundamentals(ticker)
         state.market_data.update(res)
@@ -563,7 +661,9 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
 
     elif name == "get_quarterly_financials":
         from tools.finance_tools import get_quarterly_financials
-        ticker = arguments.get("ticker") or state.ticker or "TCS.NS"
+        ticker = arguments.get("ticker") or state.ticker
+        if not ticker:
+            return {"error": "No ticker specified or resolved. Call resolve_entity first."}
         session_mgr.category_attempts["quarterly_financials"] += 1
         res = get_quarterly_financials(ticker)
         state.market_data["quarterly_financials"] = res
@@ -572,7 +672,9 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
 
     elif name == "get_technicals":
         from tools.finance_tools import get_technicals
-        ticker = arguments.get("ticker") or state.ticker or "TCS.NS"
+        ticker = arguments.get("ticker") or state.ticker
+        if not ticker:
+            return {"error": "No ticker specified or resolved. Call resolve_entity first."}
         session_mgr.category_attempts["technicals"] += 1
         res = get_technicals(ticker)
         state.market_data.update(res)
@@ -581,7 +683,9 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
 
     elif name == "get_ownership":
         from tools.finance_tools import get_ownership
-        ticker = arguments.get("ticker") or state.ticker or "TCS.NS"
+        ticker = arguments.get("ticker") or state.ticker
+        if not ticker:
+            return {"error": "No ticker specified or resolved. Call resolve_entity first."}
         session_mgr.category_attempts["ownership"] += 1
         res = get_ownership(ticker)
         state.market_data.update(res)
@@ -590,9 +694,10 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
 
     elif name == "compute_custom_financial_metric":
         from tools.finance_tools import compute_custom_financial_metric
+        ticker = arguments.get("ticker") or state.ticker
         res = compute_custom_financial_metric(
             expression=arguments.get("expression", ""),
-            ticker=arguments.get("ticker") or state.ticker or "TCS.NS",
+            ticker=ticker,
             metric_name=arguments.get("metric_name", "custom_metric"),
             context=arguments.get("context", {}),
         )
@@ -648,12 +753,16 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         session_mgr.category_attempts["aml_sweep"] += 1
         res = run_structured_aml_sweep(entity_name=entity_name, ticker=ticker)
 
-        findings = [AMLFinding(**f) for f in res.get("findings", [])]
+        raw_findings = res if isinstance(res, list) else res.get("findings", [])
+        findings = [AMLFinding(**f) if isinstance(f, dict) else f for f in raw_findings]
+
+        screened_entities = [entity_name]
+        if ticker and ticker != entity_name:
+            screened_entities.append(ticker)
+
         state.aml_result = AMLScreeningResult(
-            entity_name=entity_name,
-            jurisdiction_risk=res.get("jurisdiction_risk", "Low"),
+            entities_screened=screened_entities,
             findings=findings,
-            sources_checked=res.get("sources_checked", []),
         )
         session_mgr.checkpoint()
         return res
@@ -702,14 +811,22 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         news_count = session_mgr.category_attempts.get("news_searches", 0)
         news_satisfied = news_count >= min_news
 
+        missing_for_report = list(retriable_missing)
+        if not news_satisfied:
+            missing_for_report.append(f"news_searches (ran {news_count}, need {min_news})")
+
         # Satisfied if all required are present OR capped out on retries
         satisfied = (len(retriable_missing) == 0) and news_satisfied
 
         val_result = ValidationResult(
             satisfied=satisfied,
-            missing=missing_required,
+            missing=missing_for_report,
             contradictions=[],
-            notes="Proceed to plan_report_format and finalize_report." if satisfied else f"Missing required data categories: {retriable_missing}",
+            notes=(
+                "Proceed to plan_report_format and finalize_report."
+                if satisfied
+                else f"Missing: {missing_for_report}. Call search_web_news or the relevant get_* data fetch tool."
+            ),
         )
         session_mgr.validation_result = val_result
         session_mgr.checkpoint()

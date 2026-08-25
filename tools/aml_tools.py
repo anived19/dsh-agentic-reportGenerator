@@ -784,8 +784,19 @@ def run_structured_aml_sweep(entity_name: str, ticker: str = "") -> list[dict[st
             )
 
     findings: list[AMLFinding] = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(tasks) or 1, 8)) as executor:
-        findings.extend(list(executor.map(_exec_screener, tasks)))
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(tasks) or 1, 8)) as executor:
+            findings.extend(list(executor.map(_exec_screener, tasks)))
+    except BaseException as exc:
+        logger.error("Structured AML sweep thread execution error: %s", exc)
+        for ent, fn in tasks:
+            findings.append(AMLFinding(
+                entity_screened=ent,
+                source_name=fn.__name__.replace("_", " ").title(),
+                finding_summary="Screening temporarily degraded due to thread pool execution error.",
+                severity=AMLSeverity.NONE,
+                source_url="",
+            ))
 
     # Jurisdictional risk (TI CPI + FATF)
     country_code = "IN" if (ticker.endswith(".NS") or ticker.endswith(".BO")) else ("US" if ticker and not "." in ticker else "IN")

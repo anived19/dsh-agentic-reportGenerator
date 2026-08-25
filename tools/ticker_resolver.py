@@ -121,12 +121,14 @@ def resolve_entity(query: str) -> list[dict[str, Any]]:
                 }]
 
     # 2. Conglomerate map check
-    # Check if cleaned query or raw query targets a conglomerate group
+    # Check if cleaned query or raw query targets a conglomerate group as a whole
     for group_name, candidates in _CONGLOMERATE_MAP.items():
-        # Match if cleaned query is exactly the group name (e.g. 'tata', 'adani')
-        # or if the word appears as a standalone token without a more specific company
-        tokens = set(cleaned.split())
-        if cleaned == group_name or group_name in tokens or raw_norm == group_name or f"{group_name} group" in raw_norm:
+        if (
+            cleaned == group_name
+            or raw_norm == group_name
+            or cleaned in (f"{group_name} group", f"{group_name} conglomerate", f"{group_name} sons", f"{group_name} enterprises")
+            or raw_norm in (f"{group_name} group", f"{group_name} conglomerate")
+        ):
             valid_candidates = []
             for c in candidates:
                 if _validate_ticker(c["ticker"]):
