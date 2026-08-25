@@ -1,22 +1,119 @@
-# Cordis plugin composition for the Financial Report Generator.
+# Cordis patch overlay for the Finoscale Financial Research Agent on DSH.
 #
-# Tells the DSH runtime to:
-#   1. Communicate with the Python SDK via the JSON-RPC stdio server
-#   2. Connect to the local MCP tool server for finance/AML/search tools
-#   3. Use the orchestrator system prompt from agents/orchestrator.md
-#
-# Usage:
-#   DeepSeekHarness(cordis="cordis.yml")
+# Applied with: npx @deepseek-ai/dsh --profile headless --patch cordis.yml "task"
 
-plugins:
-  # Required: JSON-RPC server for Python SDK communication
-  - name: "@deepseek-ai/dsh-sdk-jsonrpc-server"
+# ─── Configure Default Model to Google / Gemini via pi-ai ───
+- id: agent-default-model
+  config:
+    provider: google
+    model: gemini-3.6-flash
 
-  # MCP tool server — connects to our Python tool server via stdio
-  - name: "@deepseek-ai/dsh-plugin-mcp"
-    config:
-      servers:
-        finoscale-tools:
-          transport: stdio
-          command: python
-          args: ["-m", "harness.mcp_server"]
+# ─── Configure Tools to Native Mode (Standard Function Calling) ───
+- id: tools
+  config:
+    mode: native
+
+# ─── Disable DeepSeek LLM, Web Search, Session Title, and Code Mode Runtime ───
+- id: llm-deepseek
+  disabled: true
+- id: web-search-deepseek
+  disabled: true
+- id: web
+  disabled: true
+- id: session-title-llm
+  disabled: true
+- id: code-runtime
+  disabled: true
+
+# ─── System Prompt: Financial Research Agent ───
+- id: system-prompt
+  name: '@deepseek-ai/dsh-system-prompt'
+  config:
+    persona: >-
+      You are a financial research agent powered by {{model}}. Your working
+      directory is {{cwd}}.
+
+
+      Your job is to gather comprehensive market data for a stock ticker using
+      the available MCP tools, reason about the findings, and produce a single
+      structured JSON output.
+
+
+      RULES:
+
+      1. NEVER fabricate or invent numbers. Every figure must come from a tool
+      observation.
+
+      2. Use the MCP tools (mcp__finoscale__get_price_snapshot,
+      mcp__finoscale__get_valuation_multiples,
+      mcp__finoscale__get_fundamentals,
+      mcp__finoscale__get_quarterly_financials,
+      mcp__finoscale__get_technicals,
+      mcp__finoscale__get_ownership,
+      mcp__finoscale__search_web_news) to gather data for the ticker specified in the task.
+
+      3. If AML screening is indicated, also call mcp__finoscale__run_structured_aml_sweep and
+      mcp__finoscale__search_adverse_media.
+
+      4. After calling all tools, STOP and reason about what you found. Identify
+      contradictions, notable patterns, and report-worthy observations.
+
+      5. Your FINAL response must be ONLY a single valid JSON object with no
+      markdown fences, no commentary, no extra text.
+
+
+      TOOL USAGE NOTES:
+
+      - mcp__finoscale__search_web_news accepts query, ticker (string), and depth ("basic" or
+      "advanced"). Use at most 3 search calls total.
+
+      - mcp__finoscale__run_structured_aml_sweep accepts entity_name and optional ticker.
+
+      - mcp__finoscale__search_adverse_media accepts entity_name, optional focus and depth.
+
+# ─── Disable built-in coding tools (only MCP financial tools allowed) ───
+- id: tool-bash
+  disabled: true
+- id: tool-pwsh
+  disabled: true
+- id: tool-fs
+  disabled: true
+- id: tool-fs-search
+  disabled: true
+- id: tool-str-replace-editor
+  disabled: true
+- id: tool-ralph
+  disabled: true
+- id: tool-subagent
+  disabled: true
+- id: tool-subagent-fork
+  disabled: true
+- id: tool-subagent-report
+  disabled: true
+- id: tool-subagent-control
+  disabled: true
+- id: tool-subagent-list-agents
+  disabled: true
+- id: tool-todo
+  disabled: true
+- id: tool-workflow
+  disabled: true
+- id: tool-web
+  disabled: true
+- id: tool-goal
+  disabled: true
+- id: tool-skill
+  disabled: true
+- id: tool-jobs
+  disabled: true
+
+# ─── Insert MCP Server Plugin ───
+- insert:
+    - id: finoscale-mcp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        transport: stdio
+        serverName: finoscale
+        command: python
+        args: ["-m", "harness.mcp_server"]
+        failOnStartupError: true
