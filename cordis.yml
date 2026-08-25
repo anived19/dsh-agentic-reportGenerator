@@ -1,0 +1,22 @@
+# Cordis plugin composition for the Financial Report Generator.
+#
+# Tells the DSH runtime to:
+#   1. Communicate with the Python SDK via the JSON-RPC stdio server
+#   2. Connect to the local MCP tool server for finance/AML/search tools
+#   3. Use the orchestrator system prompt from agents/orchestrator.md
+#
+# Usage:
+#   DeepSeekHarness(cordis="cordis.yml")
+
+plugins:
+  # Required: JSON-RPC server for Python SDK communication
+  - name: "@deepseek-ai/dsh-sdk-jsonrpc-server"
+
+  # MCP tool server — connects to our Python tool server via stdio
+  - name: "@deepseek-ai/dsh-plugin-mcp"
+    config:
+      servers:
+        finoscale-tools:
+          transport: stdio
+          command: python
+          args: ["-m", "harness.mcp_server"]
