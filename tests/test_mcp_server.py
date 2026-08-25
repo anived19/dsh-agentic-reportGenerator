@@ -151,9 +151,9 @@ def test_dispatch_unknown_tool():
 
 
 def test_mcp_async_list_tools():
-    """Verify async list_tools handler returns all 22 tools as Tool objects."""
+    """Verify async list_tools handler returns all 24 tools as Tool objects."""
     tools = asyncio.run(list_tools())
-    assert len(tools) == 22
+    assert len(tools) == 24
     names = [t.name for t in tools]
     assert "resolve_entity" in names
     assert "ask_user" in names
@@ -163,6 +163,8 @@ def test_mcp_async_list_tools():
     assert "compute_retail_consumer_metrics" in names
     assert "get_peer_tickers" in names
     assert "investigate_financial_anomaly" in names
+    assert "scrape_url" in names
+    assert "scrape_moneycontrol" in names
     assert "audit_draft" in names
     assert "validate_data" in names
     assert "plan_report_format" in names

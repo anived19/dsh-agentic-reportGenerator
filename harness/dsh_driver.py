@@ -160,8 +160,12 @@ def run_dsh_orchestrator(
         f"   - mcp__finoscale__get_quarterly_financials\n"
         f"   - mcp__finoscale__get_technicals\n"
         f"   - mcp__finoscale__get_ownership\n"
-        f"   - mcp__finoscale__compute_custom_financial_metric (if ad-hoc formulas needed)\n"
+        f"   - mcp__finoscale__compute_banking_metrics / compute_saas_metrics / compute_retail_consumer_metrics (sector calculator)\n"
+        f"   - mcp__finoscale__get_peer_tickers (competitor peer multiples matrix)\n"
+        f"   - mcp__finoscale__scrape_moneycontrol (for Indian equities: 20D delivery %, VWAP, Beta)\n"
         f"3. Call mcp__finoscale__search_web_news for live sentiment (max 3-5 searches).\n"
+        f"   - If sharp QoQ profit drops or anomalies appear, call mcp__finoscale__investigate_financial_anomaly\n"
+        f"   - To read full text or tables from any web URL / filing, call mcp__finoscale__scrape_url\n"
     )
     if run_aml:
         task_prompt += (
@@ -170,10 +174,11 @@ def run_dsh_orchestrator(
             f"   - mcp__finoscale__search_adverse_media\n"
         )
     task_prompt += (
-        f"5. Call mcp__finoscale__reflect_on_progress to summarize gathered data.\n"
-        f"6. Call mcp__finoscale__validate_data. Verify requirements are satisfied.\n"
-        f"7. Call mcp__finoscale__plan_report_format with a tailored ReportSpec (max 5-7 sections).\n"
-        f"8. Call mcp__finoscale__finalize_report to complete your execution."
+        f"5. Call mcp__finoscale__audit_draft to cross-check numbers against empirical data.\n"
+        f"6. Call mcp__finoscale__reflect_on_progress to summarize gathered data.\n"
+        f"7. Call mcp__finoscale__validate_data. Verify requirements are satisfied.\n"
+        f"8. Call mcp__finoscale__plan_report_format with a tailored ReportSpec (max 5-7 sections).\n"
+        f"9. Call mcp__finoscale__finalize_report to complete your execution."
     )
 
     # 3. Setup Process Environment

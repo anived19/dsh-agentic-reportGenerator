@@ -80,7 +80,7 @@ flowchart TD
 |---|---|---|
 | `harness/dsh_driver.py` | Spawns DSH headless runner, handles ask_user IPC, loads session state, triggers synthesis | Stage 2 Driver |
 | `harness/dsh_orchestrator.py` | Forwarder module re-exporting `run_dsh_orchestrator` to `harness.dsh_driver` | Stage 2 Forwarder |
-| `harness/mcp_server.py` | Stateful Model Context Protocol (MCP) server managing all 22 agentic tools over stdio | Stage 2 MCP Server |
+| `harness/mcp_server.py` | Stateful Model Context Protocol (MCP) server managing all 24 agentic tools over stdio | Stage 2 MCP Server |
 | `harness/intake.py` | Single-shot LLM calls: seed company reference + seed report type prior | Stage 1 |
 | `harness/synthesis.py` | Chief Editor (single-shot LLM → Markdown with `ReportSpec` overrides); `render_aml_markdown()` deterministic table | Stage 3 |
 | `harness/gemini_retry.py` | 429-aware retry wrapper for `generate_content` with backoff | Shared |
@@ -91,6 +91,7 @@ flowchart TD
 | File | What it does | Layer/Stage |
 |---|---|---|
 | `tools/finance_tools.py` | Granular yfinance fetchers, sector calculators (banking/SaaS/retail), AST sandbox, CRO audit engine | Data & Calculators |
+| `tools/scraper_tools.py` | Universal web scraper + specialized Moneycontrol portal scraper with caching & Playwright fallback | Scraping Tools |
 | `tools/peer_resolver.py` | Peer discovery & competitor comparative valuation multiples resolver | Data Tools |
 | `tools/ticker_resolver.py` | Conglomerate map + static map + yfinance search → multi-candidate resolution with fail-closed fallback | Data Tools |
 | `tools/conglomerate_map.yaml` | Curated group mappings (Tata, Reliance, Adani, Mahindra, Bajaj, Birla, HDFC, ICICI) | Data Tools |

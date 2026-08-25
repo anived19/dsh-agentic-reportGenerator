@@ -605,6 +605,76 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "properties": {},
         },
     },
+    {
+        "name": "scrape_url",
+        "description": (
+            "Universal web scraper capable of fetching and parsing ANY website or API endpoint. "
+            "Extracts clean markdown text, structured tables, and metadata. "
+            "Supports fast-path HTTP/2 with Playwright headless browser fallback."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "url": {"type": "string", "description": "Target web URL (HTTP or HTTPS)."},
+                "fields": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional specific field names to extract (e.g. ['Revenue', 'Net Profit']).",
+                },
+                "selector": {"type": "string", "description": "Optional CSS selector to focus extraction on a specific container."},
+                "extract_mode": {
+                    "type": "string",
+                    "enum": ["auto", "text", "tables", "json"],
+                    "default": "auto",
+                    "description": "Extraction mode: 'auto' (text + tables), 'text' (markdown text only), 'tables' (structured tables only), 'json' (raw JSON).",
+                },
+                "use_browser": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "If True, renders page using headless Chromium to execute client-side JavaScript.",
+                },
+                "max_length": {
+                    "type": "integer",
+                    "default": 8000,
+                    "description": "Maximum character length of extracted text.",
+                },
+            },
+            "required": ["url"],
+        },
+    },
+    {
+        "name": "scrape_moneycontrol",
+        "description": (
+            "Specialized Moneycontrol.com financial portal scraper for Indian equities. "
+            "Extracts key data: 20D Avg Delivery %, VWAP, Beta, 52-Week High/Low, All-Time High/Low, "
+            "Book Value, Market Cap (Cr), and financial tables."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query_or_ticker": {
+                    "type": "string",
+                    "description": "Stock ticker (e.g. 'TCS.NS', 'RELIANCE', 'HDFCBANK') or company name ('Tata Motors') or full Moneycontrol URL.",
+                },
+                "fields": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional specific fields to extract (e.g. ['beta', 'delivery', 'vwap', '52_week_high']).",
+                },
+                "section": {
+                    "type": "string",
+                    "default": "overview",
+                    "description": "Financial section ('overview', 'financials', 'ratios', 'peers').",
+                },
+                "use_browser": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "If True, uses headless Chromium for dynamic widgets.",
+                },
+            },
+            "required": ["query_or_ticker"],
+        },
+    },
 ]
 
 
@@ -1001,6 +1071,28 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
 
         state.telemetry.tavily_calls += 1
         res = search_adverse_media(entity_name=entity_name, focus=focus, depth=depth)
+        session_mgr.checkpoint()
+        return res
+
+    elif name == "scrape_url":
+        from tools.scraper_tools import scrape_url
+        url = arguments.get("url", "")
+        fields = arguments.get("fields")
+        selector = arguments.get("selector")
+        extract_mode = arguments.get("extract_mode", "auto")
+        use_browser = arguments.get("use_browser", False)
+        max_length = arguments.get("max_length", 8000)
+        res = scrape_url(url=url, fields=fields, selector=selector, extract_mode=extract_mode, use_browser=use_browser, max_length=max_length)
+        session_mgr.checkpoint()
+        return res
+
+    elif name == "scrape_moneycontrol":
+        from tools.scraper_tools import scrape_moneycontrol
+        query_or_ticker = arguments.get("query_or_ticker") or state.ticker or state.company_name or ""
+        fields = arguments.get("fields")
+        section = arguments.get("section", "overview")
+        use_browser = arguments.get("use_browser", False)
+        res = scrape_moneycontrol(query_or_ticker=query_or_ticker, fields=fields, section=section, use_browser=use_browser)
         session_mgr.checkpoint()
         return res
 

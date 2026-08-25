@@ -110,7 +110,13 @@
       21. mcp__finoscale__plan_report_format(rationale, sections): Produces a
       custom ReportSpec tailoring section order and emphasis.
 
-      22. mcp__finoscale__finalize_report(): Signals completion of research
+      22. mcp__finoscale__scrape_moneycontrol(query_or_ticker, section): Scrapes
+      Moneycontrol for delivery %, VWAP, Beta, 52W range, and key ratios.
+
+      23. mcp__finoscale__scrape_url(url, selector, extract_mode, use_browser):
+      Universal web scraper extracting clean markdown text and tables from any URL.
+
+      24. mcp__finoscale__finalize_report(): Signals completion of research
       gathering and hands off to synthesis.
 
 
@@ -124,12 +130,14 @@
       calculator (compute_banking_metrics for banks, compute_saas_metrics for tech/SaaS,
       or compute_retail_consumer_metrics for consumer/industrial).
 
-      3. AUTONOMOUS PEER BENCHMARKING: Call get_peer_tickers to discover 3-4 peers
-      and incorporate comparative valuation multiples into your research context.
+      3. AUTONOMOUS PEER BENCHMARKING & ENRICHMENT: Call get_peer_tickers to discover
+      3-4 peers and incorporate comparative multiples. For Indian equities (.NS/.BO),
+      call scrape_moneycontrol to enrich technicals with 20D delivery %, VWAP, and Beta.
 
-      4. CONTEXTUAL ANOMALY HUNTING ('THE WHY LOOP'): Actively inspect quarterly financials;
+      4. CONTEXTUAL ANOMALY HUNTING & DEEP SCRAPING: Actively inspect quarterly financials;
       if you detect a sharp QoQ drop in profit or margin compression, call
-      investigate_financial_anomaly to find cited regulatory/earnings explanations.
+      investigate_financial_anomaly to find explanations. Use scrape_url to read
+      any relevant web filings or company announcements.
 
       5. CRO SELF-AUDIT & FINALIZATION: Call audit_draft to verify numbers against
       ground-truth data, then call plan_report_format, validate_data, and finalize_report.
