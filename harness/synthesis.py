@@ -207,6 +207,18 @@ def _instr_valuation_analysis(outlook_label: str, market_metrics: Optional[Marke
         if is_bank else ""
     )
 
+    peer_instr = ""
+    if market_metrics and market_metrics.peer_benchmarks and market_metrics.peer_benchmarks.peers:
+        peer_data = market_metrics.peer_benchmarks
+        peers_list = ", ".join([f"{p.name} ({p.ticker})" for p in peer_data.peers])
+        peer_instr = (
+            f"\n\nPEER BENCHMARKING TABLE (MANDATORY WHEN REQUESTED IN VALUATION/PEER SECTIONS):\n"
+            f"- Table: Company | Market Cap | Trailing P/E | Forward P/E | P/S | EV/EBITDA | Operating Margin.\n"
+            f"- Rows: Target Company ({market_metrics.company_name or market_metrics.ticker}) and Peer Competitors ({peers_list}).\n"
+            f"- Copy exact formatted values from peer_benchmarks JSON (e.g. pe_ratio_formatted, forward_pe_formatted, ps_ratio_formatted, ev_ebitda_formatted, operating_margin_formatted).\n"
+            f"- Synthesize relative valuation positioning: identify whether the target company trades at a premium or discount to industry peers.\n"
+        )
+
     return (
         "Write a Valuation Analysis table: Metric | Value | Notes. "
         "Rows: P/E (Trailing), P/E (Forward), Price-to-Book, Price-to-Sales, "
@@ -217,11 +229,12 @@ def _instr_valuation_analysis(outlook_label: str, market_metrics: Optional[Marke
         "- Valuation multiples: copy pe_ratio_formatted, forward_pe_formatted, pb_ratio_formatted, "
         "  ps_ratio_formatted, ev_ebitda_formatted — never output raw unrounded floats like '17.152199'.\n"
         "- Percentage ratios: copy gross_margin_formatted, operating_margin_formatted, and dividend_yield_formatted — "
-        "  never output raw decimal fractions like '0.40389' or '0.23963'.\n"
+        "  never output raw decimal fractions like '0.40389' or '0.23963'. Dividend yield e.g. '0.46%' or '2.82%' must be exact.\n"
         "- Revenue (TTM): copy revenue_ttm_formatted (e.g. 'Rs. 2.76 Lakh Cr' or '$194.91B').\n"
         "- ANTI-WRAPPING RULE (TABLE CELL ECONOMY): Notes column must ONLY contain short 2-4 word factual notes (e.g. 'below 5yr avg', 'in line with sector'). "
         "  NEVER place full sentences, analyst commentary, or URL citations ([Source: ...]) inside table cells! "
         "  All analyst quotes, valuation narratives, and URL citations MUST be placed in dedicated standard paragraphs or bullet points under Market Sentiment & News / Key Catalysts.\n"
+        f"{peer_instr}"
         "Source note: '(Source: Yahoo Finance via yfinance)'"
     )
 
@@ -374,21 +387,29 @@ def _build_section_instructions(
 
             if spec.instruction:
                 base_instruction = spec.instruction
+                # If custom instruction asks for peer benchmarking and peer data exists, append peer rows table
+                if any(k in (spec.key.lower() + (spec.title or "").lower()) for k in ("peer", "benchmark")) and market_metrics and market_metrics.peer_benchmarks:
+                    peer_sec = _instr_peer_benchmarking(outlook_label, market_metrics=market_metrics)
+                    if "PEER BENCHMARKING" not in base_instruction.upper():
+                        base_instruction = f"{base_instruction}\n\n{peer_sec}"
             else:
-                instruction_fn = _SECTION_INSTRUCTION_MAP.get(spec.key)
-                if instruction_fn:
-                    base_instruction = instruction_fn(outlook_label, market_metrics=market_metrics, sentiment_findings=sentiment_findings)
+                if any(k in (spec.key.lower() + (spec.title or "").lower()) for k in ("peer", "benchmark")):
+                    base_instruction = _instr_peer_benchmarking(outlook_label, market_metrics=market_metrics)
                 else:
-                    # Dynamic instruction for custom section
-                    sec_title = spec.key.replace("_", " ").title()
-                    base_instruction = (
-                        f"Write a focused {sec_title} section addressing the report's editorial goal.\n"
-                        f"- Use clean Markdown headings (H2/H3), concise standard paragraphs, or compact data tables.\n"
-                        f"- ANTI-WRAPPING RULE: Any table cells in this custom section must ONLY contain concise values/notes (2-4 words). "
-                        f"  Move all narrative, strategic commentary, and cited source URLs into standard narrative paragraphs or bullet points.\n"
-                        f"- NUMERIC FIDELITY: Copy all numeric figures character-for-character from the JSON (including custom_metrics); never output unrounded raw floats or scientific notation.\n"
-                        f"- WORD BUDGET: Maintain concise executive focus (120–180 words, max 6–8 table rows)."
-                    )
+                    instruction_fn = _SECTION_INSTRUCTION_MAP.get(spec.key)
+                    if instruction_fn:
+                        base_instruction = instruction_fn(outlook_label, market_metrics=market_metrics, sentiment_findings=sentiment_findings)
+                    else:
+                        # Dynamic instruction for custom section
+                        sec_title = spec.key.replace("_", " ").title()
+                        base_instruction = (
+                            f"Write a focused {sec_title} section addressing the report's editorial goal.\n"
+                            f"- Use clean Markdown headings (H2/H3), concise standard paragraphs, or compact data tables.\n"
+                            f"- ANTI-WRAPPING RULE: Any table cells in this custom section must ONLY contain concise values/notes (2-4 words). "
+                            f"  Move all narrative, strategic commentary, and cited source URLs into standard narrative paragraphs or bullet points.\n"
+                            f"- NUMERIC FIDELITY: Copy all numeric figures character-for-character from the JSON (including custom_metrics); never output unrounded raw floats or scientific notation.\n"
+                            f"- WORD BUDGET: Maintain concise executive focus (120–180 words, max 6–8 table rows)."
+                        )
 
             emphasis_directive = f"\n[EDITORIAL EMPHASIS DIRECTIVE]: {spec.emphasis}" if spec.emphasis else ""
             lines.append(f"\n{heading}\n{base_instruction}{emphasis_directive}")

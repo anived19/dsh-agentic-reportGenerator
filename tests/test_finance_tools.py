@@ -99,11 +99,13 @@ def test_build_quarterly_financials_continuity_gap():
     )
     mock_ticker = MagicMock()
     mock_ticker.quarterly_financials = df
+    mock_ticker.info = {"currency": "USD"}
 
     quarters = _build_quarterly_financials(mock_ticker)
-    assert len(quarters) == 4
-    # The 2024-09-30 quarter (index 2 in newest-first) comes after the 2024-03-31 quarter in chronological order
-    assert quarters[2].data_gap_note == "A prior quarter may be missing from source data (yfinance)."
+    assert len(quarters) == 5
+    # The gap quarter was inserted between 2024-09-30 (index 2) and 2024-03-31 (index 4) -> at index 3 in newest-first
+    assert "[Omitted in Feed]" in quarters[3].quarter
+    assert "omitted by upstream" in quarters[3].data_gap_note
     assert quarters[0].data_gap_note is None
     assert quarters[1].data_gap_note is None
 
@@ -414,4 +416,52 @@ def test_assemble_market_metrics_reconciliation():
     assert metrics.revenue_ttm == 194910000000.0
     assert metrics.ttm_reconciliation_note is not None
     assert "$194.91B" in metrics.ttm_reconciliation_note
+
+
+def test_dividend_yield_scaling_prevention():
+    """Verify dividendYield is never 100x double-scaled (0.46 -> 0.46%, not 46.00%)."""
+    from unittest.mock import MagicMock, patch
+    from tools.finance_tools import get_valuation_multiples
+
+    with patch("yfinance.Ticker") as mock_ticker_cls:
+        mock_instance = MagicMock()
+        mock_instance.info = {
+            "currency": "INR",
+            "trailingPE": 25.0,
+            "dividendYield": 0.46,  # 0.46%
+            "operatingMargins": 0.15,
+        }
+        mock_ticker_cls.return_value = mock_instance
+
+        val_res = get_valuation_multiples("RELIANCE.NS")
+        assert val_res["dividend_yield"] == 0.46
+        assert val_res["dividend_yield_formatted"] == "0.46%"
+        assert val_res["dividend_yield_formatted"] != "46.00%"
+
+
+def test_quarterly_financials_gap_detection():
+    """Verify missing periods in quarterly data feeds insert explicit [Omitted in Feed] rows."""
+    from unittest.mock import MagicMock
+    from tools.finance_tools import _build_quarterly_financials
+    import pandas as pd
+
+    # Create dummy dataframe with a skipped quarter (2025-06-30 to 2025-12-31, skipping 2025-09-30)
+    cols = pd.to_datetime(["2025-03-31", "2025-06-30", "2025-12-31", "2026-03-31"])
+    data = {
+        "Total Revenue": [200000.0, 210000.0, 230000.0, 240000.0],
+        "Net Income": [15000.0, 16000.0, 18000.0, 19000.0],
+    }
+    df = pd.DataFrame(data, index=cols).T
+
+    mock_ticker = MagicMock()
+    mock_ticker.quarterly_financials = df
+    mock_ticker.info = {"currency": "INR"}
+
+    quarters = _build_quarterly_financials(mock_ticker)
+    assert len(quarters) >= 4
+    # Check that the gap was caught and marked
+    gap_quarters = [q for q in quarters if "[Omitted in Feed]" in q.quarter]
+    assert len(gap_quarters) >= 1
+    assert gap_quarters[0].revenue_formatted == "data unavailable"
+
 

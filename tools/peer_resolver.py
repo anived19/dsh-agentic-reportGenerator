@@ -67,8 +67,12 @@ _KNOWN_PEER_MAP: dict[str, list[str]] = {
     "M&M.NS": ["MARUTI.NS", "TMPV.NS", "BAJAJ-AUTO.NS", "EICHERMOT.NS"],
     "TSLA": ["RIVN", "LCID", "F", "GM", "TM"],
 
-    # Energy / Conglomerates
-    "RELIANCE.NS": ["ONGC.NS", "IOC.NS", "BPCL.NS", "TATASTEEL.NS"],
+    # Energy, Telecom & Conglomerates
+    "RELIANCE.NS": ["ONGC.NS", "IOC.NS", "BPCL.NS", "BHARTIARTL.NS"],
+    "BHARTIARTL.NS": ["RELIANCE.NS", "TATACOMM.NS", "IDEA.NS"],
+    "ONGC.NS": ["RELIANCE.NS", "IOC.NS", "BPCL.NS", "OIL.NS"],
+    "IOC.NS": ["BPCL.NS", "HPCL.NS", "RELIANCE.NS", "ONGC.NS"],
+    "BPCL.NS": ["IOC.NS", "HPCL.NS", "RELIANCE.NS", "ONGC.NS"],
     "XOM": ["CVX", "SHEL", "TTE", "COP", "BP"],
     "CVX": ["XOM", "COP", "SHEL", "BP"],
 }

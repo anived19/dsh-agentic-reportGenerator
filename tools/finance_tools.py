@@ -141,7 +141,7 @@ def _volume_trend(volumes: pd.Series, short_window: int = 20, long_window: int =
 
 def _build_quarterly_financials(t: yf.Ticker) -> list[QuarterlyDataPoint]:
     """
-    Extract last 4 quarters of revenue and net income, compute QoQ growth.
+    Extract last 4-6 quarters of revenue and net income, compute QoQ growth with gap placeholders.
     Returns an empty list if data isn't available — never fabricates numbers.
     """
     try:
@@ -168,22 +168,71 @@ def _build_quarterly_financials(t: yf.Ticker) -> list[QuarterlyDataPoint]:
         inc_row = qfin.loc[inc_key] if inc_key is not None else None
 
         currency = None
+        is_indian = False
         try:
             currency = t.info.get("currency")
+            is_indian = (currency or "").upper() in ("INR", "₹", "RS")
         except Exception:
             pass
 
-        # Explicitly sort columns descending by date to ensure newest-to-oldest ordering
-        cols = sorted(qfin.columns, reverse=True)[:4]
-        if not cols:
+        # Sort columns chronologically ascending (oldest first)
+        cols_sorted = sorted(qfin.columns)
+        if not cols_sorted:
             return []
 
-        cols_oldest_first = list(reversed(cols))
+        def _format_quarter_label(col_dt: Any, indian_fy: bool = False) -> str:
+            dt = pd.to_datetime(col_dt)
+            month = dt.month
+            year = dt.year
+            if indian_fy:
+                # Indian FY runs April to March:
+                # Month 4-6 -> Q1 FY(Year+1), Month 7-9 -> Q2 FY(Year+1), Month 10-12 -> Q3 FY(Year+1), Month 1-3 -> Q4 FY(Year)
+                if 4 <= month <= 6:
+                    return f"Q1 FY{year + 1}"
+                elif 7 <= month <= 9:
+                    return f"Q2 FY{year + 1}"
+                elif 10 <= month <= 12:
+                    return f"Q3 FY{year + 1}"
+                else:
+                    return f"Q4 FY{year}"
+            else:
+                return f"Q{dt.quarter} FY{year}"
 
         quarters: list[QuarterlyDataPoint] = []
-        for i, col in enumerate(cols_oldest_first):
-            label = "Q%d FY%d" % (col.quarter, col.year)
+        for i, col in enumerate(cols_sorted):
+            label = _format_quarter_label(col, indian_fy=is_indian)
             data_gap_note = None
+
+            # Detect gap between previous reported quarter and current
+            if i > 0:
+                prev_col = cols_sorted[i - 1]
+                ts_curr = pd.to_datetime(col)
+                ts_prev = pd.to_datetime(prev_col)
+                delta_days = (ts_curr - ts_prev).days
+
+                # If gap > 130 days, upstream feed skipped an intermediate quarter
+                if delta_days > 130:
+                    ts_missing = ts_prev + pd.DateOffset(months=3)
+                    missing_label = _format_quarter_label(ts_missing, indian_fy=is_indian)
+                    gap_note = f"Quarter {missing_label} was omitted by upstream exchange data feed (yfinance)."
+                    logger.warning(
+                        "Quarterly financials gap detected: %s missing between %s and %s (delta: %d days)",
+                        missing_label, ts_prev.strftime('%Y-%m-%d'), ts_curr.strftime('%Y-%m-%d'), delta_days
+                    )
+                    quarters.append(QuarterlyDataPoint(
+                        quarter=f"{missing_label} [Omitted in Feed]",
+                        revenue=None,
+                        revenue_formatted="data unavailable",
+                        net_income=None,
+                        net_income_formatted="data unavailable",
+                        revenue_growth_qoq=None,
+                        revenue_growth_qoq_formatted="data unavailable",
+                        revenue_growth_yoy=None,
+                        profit_growth_qoq=None,
+                        profit_growth_qoq_formatted="data unavailable",
+                        profit_growth_yoy=None,
+                        data_gap_note=gap_note,
+                    ))
 
             def _safe_float(row, c) -> float | None:
                 if row is None:
@@ -209,37 +258,19 @@ def _build_quarterly_financials(t: yf.Ticker) -> list[QuarterlyDataPoint]:
             rev_qoq = prof_qoq = None
             rev_qoq_fmt = prof_qoq_fmt = None
 
-            if i > 0:
-                prev = quarters[i - 1]
-                prev_col = cols_oldest_first[i - 1]
-
-                # Continuity check: verify period delta is ~3 months (80-100 days)
-                try:
-                    ts_curr = pd.to_datetime(col)
-                    ts_prev = pd.to_datetime(prev_col)
-                    delta_days = (ts_curr - ts_prev).days
-                    if delta_days > 100:
-                        gap_months = round(delta_days / 30.44)
-                        logger.warning(
-                            "Quarterly financials gap detected between %s (%s) and %s (%s): ~%d months (%d days, expected ~3 months)",
-                            prev.quarter, ts_prev.strftime('%Y-%m-%d'), label, ts_curr.strftime('%Y-%m-%d'), gap_months, delta_days
-                        )
-                        data_gap_note = "A prior quarter may be missing from source data (yfinance)."
-                except Exception as gap_exc:
-                    logger.debug("Quarterly date delta check failed: %s", gap_exc)
-
-                if data_gap_note is None:
-                    if rev is not None and prev.revenue is not None and prev.revenue != 0:
-                        rev_qoq = round((rev - prev.revenue) / abs(prev.revenue) * 100, 2)
-                        rev_qoq_fmt = f"{rev_qoq:+.2f}%"
-                    if inc is not None and prev.net_income is not None and prev.net_income != 0:
-                        prof_qoq = round((inc - prev.net_income) / abs(prev.net_income) * 100, 2)
-                        prof_qoq_fmt = f"{prof_qoq:+.2f}%"
+            # Calculate QoQ against immediate prior quarter if it has valid data
+            if quarters:
+                prev = quarters[-1]
+                if prev.revenue is not None and prev.revenue != 0 and rev is not None and data_gap_note is None and not prev.data_gap_note:
+                    rev_qoq = round((rev - prev.revenue) / abs(prev.revenue) * 100, 2)
+                    rev_qoq_fmt = f"{rev_qoq:+.2f}%"
                 else:
-                    # Do not compute non-sequential QoQ growth across a missing period gap
-                    rev_qoq = None
-                    prof_qoq = None
                     rev_qoq_fmt = "data unavailable"
+
+                if prev.net_income is not None and prev.net_income != 0 and inc is not None and data_gap_note is None and not prev.data_gap_note:
+                    prof_qoq = round((inc - prev.net_income) / abs(prev.net_income) * 100, 2)
+                    prof_qoq_fmt = f"{prof_qoq:+.2f}%"
+                else:
                     prof_qoq_fmt = "data unavailable"
             else:
                 rev_qoq_fmt = "data unavailable"
@@ -263,7 +294,8 @@ def _build_quarterly_financials(t: yf.Ticker) -> list[QuarterlyDataPoint]:
                 data_gap_note=data_gap_note,
             ))
 
-        return list(reversed(quarters))
+        # Return newest first (top 4-5 quarters)
+        return list(reversed(quarters))[:5]
 
     except Exception as exc:
         logger.warning("Quarterly financials extraction failed: %s", exc)
@@ -618,7 +650,7 @@ def get_valuation_multiples(ticker: str) -> dict[str, Any]:
         "ev_ebitda": ev,
         "ev_ebitda_formatted": ev_formatted,
         "dividend_yield": dy,
-        "dividend_yield_formatted": format_percent(dy),
+        "dividend_yield_formatted": format_percent(dy, is_pct_points=True),
         "revenue_ttm": revenue_ttm,
         "revenue_ttm_formatted": format_currency_amount(revenue_ttm, currency),
         "gross_margin": gm,
@@ -943,7 +975,7 @@ def assemble_market_metrics(ticker: str, data: dict[str, Any]) -> MarketMetrics:
         ev_ebitda=data.get("ev_ebitda"),
         ev_ebitda_formatted=data.get("ev_ebitda_formatted") or (format_number_amount(data.get("ev_ebitda")) if not is_bank else "N/A (Depository Bank - Operating Interest)"),
         dividend_yield=data.get("dividend_yield"),
-        dividend_yield_formatted=data.get("dividend_yield_formatted") or format_percent(data.get("dividend_yield")),
+        dividend_yield_formatted=data.get("dividend_yield_formatted") or format_percent(data.get("dividend_yield"), is_pct_points=True),
         eps_ttm=data.get("eps_ttm"),
         eps_ttm_formatted=data.get("eps_ttm_formatted") or format_number_amount(data.get("eps_ttm")),
         revenue_ttm=data.get("revenue_ttm"),
@@ -983,6 +1015,10 @@ def assemble_market_metrics(ticker: str, data: dict[str, Any]) -> MarketMetrics:
         outlook_low_formatted=data.get("outlook_low_formatted") or format_number_amount(data.get("outlook_low")),
         outlook_price_trend=trend,
         custom_metrics=data.get("custom_metrics", {}),
+        sector_metrics=data.get("sector_metrics"),
+        peer_benchmarks=data.get("peer_benchmarks"),
+        anomaly_findings=data.get("anomaly_findings", []),
+        cro_audit_report=data.get("cro_audit_report"),
         unavailable_fields=unavailable,
         fetched_at=date.today(),
     )

@@ -330,6 +330,24 @@ def run_dsh_orchestrator(
         turn=session_payload.get("turn", 1),
     )
 
+    # Forward session state containers to market_data
+    if "peer_benchmarks" not in market_data and session_payload.get("peer_benchmarks"):
+        market_data["peer_benchmarks"] = session_payload["peer_benchmarks"]
+    if "sector_metrics" not in market_data and session_payload.get("sector_metrics"):
+        market_data["sector_metrics"] = session_payload["sector_metrics"]
+    if "anomaly_findings" not in market_data and session_payload.get("anomaly_findings"):
+        market_data["anomaly_findings"] = session_payload["anomaly_findings"]
+    if "cro_audit_report" not in market_data and session_payload.get("cro_audit_report"):
+        market_data["cro_audit_report"] = session_payload["cro_audit_report"]
+
+    # Guarantee peer benchmarks are populated if not already present
+    if not market_data.get("peer_benchmarks"):
+        try:
+            from tools.peer_resolver import get_peer_tickers
+            market_data["peer_benchmarks"] = get_peer_tickers(ticker)
+        except Exception as peer_exc:
+            logger.debug("Automatic peer resolution fallback failed for %s: %s", ticker, peer_exc)
+
     # 7. Assemble Grounded MarketMetrics from DSH Data (Zero Re-Fetching)
     market_metrics = assemble_market_metrics(ticker, market_data)
 

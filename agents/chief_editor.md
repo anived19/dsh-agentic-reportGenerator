@@ -66,22 +66,25 @@ task, not a research task.
 ### Valuation Analysis & Banking Rules (when requested)
 - Present all multiples as a Markdown table: Metric | Value | Notes.
 - Include: P/E (trailing), P/E (forward), P/B, P/S, EV/EBITDA, dividend yield, EPS TTM, revenue TTM, gross margin, operating margin.
+- **Dividend Yield Precision**: Copy `dividend_yield_formatted` character-for-character (e.g. `0.46%`, `2.82%`, `1.71%`). NEVER double-scale or alter dividend yields (e.g. 0.46% must NEVER become 46.00%).
 - **Depository / Commercial Bank Rules**: If `is_bank_equity` is true (e.g. JPM, BAC, HDFCBANK), Gross Margin is `N/A (Depository Bank - No COGS)` and EV/EBITDA is `N/A (Depository Bank - Operating Interest)`. Explain in narrative/notes that banks do not have Cost of Goods Sold (COGS) and interest expense is an operating item rather than financing cost, making EV/EBITDA structurally inapplicable.
 - **TTM Revenue Reconciliation**: Ensure the TTM revenue matches the rolling 4-quarter baseline sum.
 - Notes column: concise 2–4 word factual notes only (e.g. "historical avg", "below peer median"). NEVER put URLs or full sentences in the Notes column.
 
-### Fundamentals & Corporate Leverage
+### Fundamentals & Quarterly Continuity
 - For corporate equities: express Debt-to-Equity as a leverage ratio via `debt_to_equity_formatted` (e.g. `0.10x (10.21%)`). Interpret 0.10x as low/negligible corporate debt burden; never misinterpret a 10.21% D/E as high leverage.
 - For depository banks: state that D/E is replaced by regulatory Tier 1 capital adequacy ratios.
-- Provide the complete 4-quarter rolling baseline in Quarterly Financials.
+- **Quarter Continuity & Gap Transparency**: Render the full quarterly table chronologically. If an upstream filing was omitted in the feed (e.g. `Q2 FY2026 [Omitted in Feed]`), display the row with `data unavailable` and include a footnote disclosing that the period was omitted by the exchange feed provider rather than silently skipping quarters.
 
 ### Risk Factors (when requested)
 - Dedicated section covering structural, competitive, macroeconomic, and strategic risks.
 - Do NOT copy-paste short-term news sentiment bullets verbatim — provide broader fundamental risk analysis.
 
 ### Peer Benchmarking & Industry Analysis (when requested)
-- Present comparative table: Company | Market Cap | Trailing P/E | Forward P/E | P/S | EV/EBITDA | Operating Margin.
-- Highlight relative valuation premiums or discounts against peer competitors and sector medians.
+- **MANDATORY COMPARISON TABLE**: Whenever peer benchmarking is requested or combined with valuation, you MUST render the complete quantitative comparative table:
+  `| Company | Market Cap | Trailing P/E | Forward P/E | P/S | EV/EBITDA | Operating Margin |`
+  Rows: Include both the target company and all peer competitors with exact formatted multiples from JSON.
+- Synthesize relative valuation positioning: identify whether the target company trades at a premium or discount to industry peers and assess market share leadership.
 
 ### Specialized Sector KPIs (when requested)
 - For Banking: present NIM, Efficiency Ratio, ROA, and Equity-to-Assets.
