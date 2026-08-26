@@ -527,6 +527,12 @@ def _check_and_scrub_numeric_drift(markdown_body: str, market_metrics: MarketMet
     return markdown_body
 
 
+def compute_average_score(score_results: list) -> float:
+    if not score_results:
+        return 0.0
+    return sum(r.score for r in score_results) / len(score_results)
+
+
 def run_chief_editor(
     market_metrics: MarketMetrics,
     sentiment_findings: SentimentFindings,
@@ -534,6 +540,7 @@ def run_chief_editor(
     report_spec: Optional[ReportSpec] = None,
     editorial_goal: Optional[str] = None,
     aml_result: Optional[AMLScreeningResult] = None,
+    score_results: Optional[list] = None,
 ) -> str:
     """Synthesize validated market data + sentiment findings into the final report Markdown."""
     client = genai.Client(api_key=settings.gemini_api_key)
@@ -574,6 +581,14 @@ def run_chief_editor(
                 "- You may state that automated screening identified no adverse sanctions, debarment, or regulatory enforcement flags."
             )
 
+    score_context_block = ""
+    if score_results:
+        avg_score = compute_average_score(score_results)
+        score_context_block = f"\n\nCREDIT SCORING RESULTS (Average Score: {avg_score:.1f}/100):\n"
+        for res in score_results:
+            score_context_block += f"- {res.category.value}: {res.score}/100\n  Strength: {res.key_strength}\n  Weakness: {res.key_weakness}\n"
+        score_context_block += "\nMANDATORY RULE: If credit scoring results are provided, you MUST explicitly include a 'Credit Scoring Summary' subsection synthesizing these scores and the average."
+
     user_message = (
         f"Report type: {report_type.value}\n"
         f"Editorial Goal: {effective_goal or 'Standard Comprehensive Financial Review'}\n"
@@ -586,6 +601,7 @@ def run_chief_editor(
         f"MARKET METRICS (JSON):\n{market_metrics.model_dump_json(indent=2)}\n\n"
         f"SENTIMENT FINDINGS (JSON):\n{sentiment_findings.model_dump_json(indent=2)}"
         f"{custom_metrics_block}"
+        f"{score_context_block}"
         f"{aml_context_block}\n"
     )
 

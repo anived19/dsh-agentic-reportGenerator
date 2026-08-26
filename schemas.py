@@ -439,6 +439,40 @@ class TickerResolution(BaseModel):
 # Stage 4: Master Agentic Loop & Orchestrator Schemas
 # ---------------------------------------------------------------------------
 
+class AnalystReviewStatus(str, Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class ScoreCategory(str, Enum):
+    FINANCES = "Finances"
+    BUSINESS_MANAGEMENT = "Business & Management"
+    HYGIENE = "Hygiene"
+    BANKING = "Banking"
+
+
+class PageCitedClaim(BaseModel):
+    """A single claim traced back to a specific page or page range in a document."""
+    claim: str
+    page_citation: str
+
+    @field_validator("claim")
+    @classmethod
+    def claim_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("claim text cannot be empty")
+        return v.strip()
+
+
+class ScoreCategoryResult(BaseModel):
+    score_category: ScoreCategory
+    score_value: float
+    comforts: list[PageCitedClaim] = Field(default_factory=list)
+    discomforts: list[PageCitedClaim] = Field(default_factory=list)
+    raw_evidence_snippets: str
+
+
 class AgentStatus(str, Enum):
     RUNNING = "running"
     AWAITING_USER = "awaiting_user"
@@ -525,6 +559,8 @@ class AgentState(BaseModel):
     sentiment_findings: Optional[SentimentFindings] = None
     aml_result: Optional[AMLScreeningResult] = None
     report_spec: Optional[ReportSpec] = None
+    score_results: list[ScoreCategoryResult] = Field(default_factory=list)
+    analyst_review_status: AnalystReviewStatus = AnalystReviewStatus.PENDING
     pending_clarification: Optional[ClarificationRequest] = None
     tool_log: list[ToolCallRecord] = Field(default_factory=list)
     telemetry: RunTelemetry = Field(default_factory=RunTelemetry)
@@ -547,6 +583,7 @@ class FinalReport(BaseModel):
     sentiment_findings: SentimentFindings
     aml_result: Optional[AMLScreeningResult] = None  # populated only when --aml flag is set
     report_spec: Optional[ReportSpec] = None
+    score_results: list[ScoreCategoryResult] = Field(default_factory=list)
     telemetry: Optional[RunTelemetry] = None
     kpi_cards: list[dict[str, str]] = Field(default_factory=list)
 

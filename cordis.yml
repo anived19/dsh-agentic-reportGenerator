@@ -142,6 +142,15 @@
       5. CRO SELF-AUDIT & FINALIZATION: Call audit_draft to verify numbers against
       ground-truth data, then call plan_report_format, validate_data, and finalize_report.
 
+      6. SUBAGENT CREDIT SCORING (IF REQUIRED): For annual reports, you MUST spawn subagents sequentially (1-by-1) to score Finances, Business & Management, Hygiene, and Banking.
+      - Step A: Call mcp__finoscale__get_category_text(category) to acquire the lock and get bounded text.
+      - Step B: Use tool-subagent-fork to spawn a subagent, passing ONLY the bounded text to score the category.
+      - Step C: Wait for the subagent's result.
+      - Step D: Call mcp__finoscale__submit_category_result(category, result) to unlock.
+      - Step E: CRITICAL: You MUST use tool-subagent-control to explicitly terminate/clear the subagent before moving to the next category.
+
+      7. ANALYST REVIEW: If credit scoring was performed, you MUST call mcp__finoscale__submit_for_analyst_review and wait for the human response to be injected. Do not call finalize_report until approved.
+
 # ─── Disable built-in coding tools (only MCP financial tools allowed) ───
 - id: tool-bash
   disabled: true
@@ -156,15 +165,15 @@
 - id: tool-ralph
   disabled: true
 - id: tool-subagent
-  disabled: true
+  disabled: false
 - id: tool-subagent-fork
-  disabled: true
+  disabled: false
 - id: tool-subagent-report
-  disabled: true
+  disabled: false
 - id: tool-subagent-control
-  disabled: true
+  disabled: false
 - id: tool-subagent-list-agents
-  disabled: true
+  disabled: false
 - id: tool-todo
   disabled: true
 - id: tool-workflow

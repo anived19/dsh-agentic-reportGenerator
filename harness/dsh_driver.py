@@ -183,6 +183,8 @@ def run_dsh_orchestrator(
 
     # 3. Setup Process Environment
     env = os.environ.copy()
+    if not env.get("DSH_TELEMETRY_DISABLED"):
+        raise RuntimeError("Strict telemetry lockdown failed: DSH_TELEMETRY_DISABLED must be set in the environment before spawning DSH.")
     env["FINOSCALE_SESSION_ID"] = session_id
     env["DSH_SESSION_ID"] = session_id
     env["GEMINI_API_KEY"] = settings.gemini_api_key
@@ -204,6 +206,7 @@ def run_dsh_orchestrator(
     proc = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
+        stdin=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
         encoding="utf-8",
@@ -217,6 +220,9 @@ def run_dsh_orchestrator(
     def _monitor_ask_user():
         pending_file = session_dir / "ask_user_pending.json"
         response_file = session_dir / "ask_user_response.json"
+        analyst_pending_file = session_dir / "analyst_review_pending.json"
+        analyst_response_file = session_dir / "analyst_review_response.json"
+        
         while not stop_monitor.is_set():
             if pending_file.exists():
                 try:
@@ -227,6 +233,26 @@ def run_dsh_orchestrator(
                     response_file.write_text(json.dumps({"selected": choice}), encoding="utf-8")
                 except Exception as exc:
                     logger.warning("Error handling ask_user IPC: %s", exc)
+                    
+            if analyst_pending_file.exists() and proc.stdin:
+                try:
+                    data = json.loads(analyst_pending_file.read_text(encoding="utf-8"))
+                    summary = data.get("draft_summary", "")
+                    print(f"\n\n[ANALYST REVIEW REQUIRED]")
+                    print(f"Draft Summary:\n{summary}\n")
+                    approval = input("Approve this draft? (yes/no): ").strip().lower()
+                    status = "approved" if approval in ("y", "yes") else "rejected"
+                    
+                    # Inject the response back into DSH via stdin (which becomes a user message in DSH)
+                    msg = f"SYSTEM INJECTION: Analyst review {status}. Update your status and proceed accordingly."
+                    proc.stdin.write(msg + "\n")
+                    proc.stdin.flush()
+                    
+                    analyst_response_file.write_text(json.dumps({"status": status}), encoding="utf-8")
+                    analyst_pending_file.rename(session_dir / "analyst_review_pending.json.processed")
+                except Exception as exc:
+                    logger.warning("Error handling analyst review IPC: %s", exc)
+                    
             time.sleep(0.1)
 
     monitor_thread = threading.Thread(target=_monitor_ask_user, daemon=True)

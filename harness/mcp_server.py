@@ -82,6 +82,9 @@ class SessionStateManager:
         self.search_records: list[dict[str, Any]] = []
         self.search_queries_used: list[str] = []
         self.validation_result: Optional[ValidationResult] = None
+        self.active_subagent_category: Optional[str] = None
+        self.bounded_index: dict[str, list[int]] = {}
+        self.parsed_pages: list[dict] = []
 
         # Load orchestrator config profiles for validation
         self.config_profiles = self._load_orchestrator_config()
@@ -1189,6 +1192,7 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         return {"status": "checkpoint_recorded"}
 
     elif name == "finalize_report":
+        from schemas import AnalystReviewStatus
         # Verify validation
         if not session_mgr.validation_result or not session_mgr.validation_result.satisfied:
             # Auto-validate once to check
@@ -1198,6 +1202,10 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
                     "error": "Cannot finalize report: required data validation unsatisfied.",
                     "validation": val_dict,
                 }
+                
+        # Verify analyst review if scores were requested
+        if state.score_results and state.analyst_review_status != AnalystReviewStatus.APPROVED:
+            return {"error": "Cannot finalize report: Analyst Review is pending or rejected. You must call submit_for_analyst_review and wait for APPROVED status."}
 
         state.status = AgentStatus.DONE
         final_path = session_mgr.dump_final_session()
@@ -1209,6 +1217,67 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
             "company_name": state.company_name,
         }
 
+    elif name == "fetch_annual_report":
+        from tools.annual_report_tools import fetch_annual_report
+        return {"pdf_path": fetch_annual_report(arguments["company_or_ticker"])}
+    elif name == "parse_report_text":
+        from tools.annual_report_tools import parse_report_text
+        pages = parse_report_text(arguments["pdf_path"])
+        session_mgr.parsed_pages = pages
+        return {"status": "success", "page_count": len(pages)}
+    elif name == "run_ocr_fallback":
+        from tools.annual_report_tools import run_ocr_fallback
+        results = run_ocr_fallback(arguments["pdf_path"], arguments["page_numbers"])
+        for r in results:
+            for p in session_mgr.parsed_pages:
+                if p["page_num"] == r["page_num"]:
+                    p["text"] = r["text"]
+        return {"status": "success", "ocr_pages": len(results)}
+    elif name == "build_section_index":
+        from tools.annual_report_tools import build_section_index
+        index = build_section_index(session_mgr.parsed_pages)
+        session_mgr.bounded_index = index
+        return index
+    elif name == "get_promoter_holding":
+        from tools.moneycontrol_tools import get_promoter_holding
+        return get_promoter_holding(arguments["query_or_ticker"])
+    elif name == "get_shareholding_pattern":
+        from tools.moneycontrol_tools import get_shareholding_pattern
+        return get_shareholding_pattern(arguments["query_or_ticker"])
+    elif name == "get_board_composition":
+        from tools.moneycontrol_tools import get_board_composition
+        return get_board_composition(arguments["query_or_ticker"])
+    elif name == "submit_for_analyst_review":
+        from schemas import AnalystReviewStatus
+        pending_file = session_mgr.session_dir / "analyst_review_pending.json"
+        pending_file.write_text(json.dumps(arguments), encoding="utf-8")
+        state.analyst_review_status = AnalystReviewStatus.PENDING
+        session_mgr.checkpoint()
+        return {"instruction": "Draft submitted. Suspend operations and wait for human injection."}
+    elif name == "mcp__finoscale__get_category_text":
+        category = arguments["category"]
+        if session_mgr.active_subagent_category is not None:
+            return {"error": f"ERROR: Subagent for {session_mgr.active_subagent_category} is already active. You MUST use mcp__finoscale__submit_category_result to unlock it before spawning the next."}
+        session_mgr.active_subagent_category = category
+        p_nums = session_mgr.bounded_index.get(category, [])
+        cat_text = ""
+        for p_num in p_nums:
+            page_text = next((p["text"] for p in session_mgr.parsed_pages if p["page_num"] == p_num), "")
+            cat_text += f"\n--- PAGE {p_num} ---\n{page_text}"
+        return {"text": cat_text}
+    elif name == "mcp__finoscale__submit_category_result":
+        category = arguments["category"]
+        if session_mgr.active_subagent_category != category:
+            return {"error": f"ERROR: Active subagent is {session_mgr.active_subagent_category}, but you tried to submit {category}."}
+        from schemas import ScoreCategoryResult
+        try:
+            result = ScoreCategoryResult.model_validate(arguments["result"])
+            state.score_results.append(result)
+        except Exception as e:
+            return {"error": f"Invalid ScoreCategoryResult format: {e}"}
+        session_mgr.active_subagent_category = None
+        session_mgr.checkpoint()
+        return {"status": "success", "message": f"{category} result stored. You may now terminate this subagent and spawn the next."}
     else:
         raise ValueError(f"Unknown MCP tool: {name}")
 
@@ -1216,6 +1285,106 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
 # ---------------------------------------------------------------------------
 # MCP Handlers
 # ---------------------------------------------------------------------------
+NEW_TOOLS = [
+    {
+        "name": "fetch_annual_report",
+        "description": "Downloads the annual report PDF for a company.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"company_or_ticker": {"type": "string"}},
+            "required": ["company_or_ticker"]
+        }
+    },
+    {
+        "name": "parse_report_text",
+        "description": "Parses a PDF annual report page-by-page. Returns list of pages.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"pdf_path": {"type": "string"}},
+            "required": ["pdf_path"]
+        }
+    },
+    {
+        "name": "run_ocr_fallback",
+        "description": "Targeted OCR fallback for empty or scanned pages.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "pdf_path": {"type": "string"},
+                "page_numbers": {"type": "array", "items": {"type": "integer"}}
+            },
+            "required": ["pdf_path", "page_numbers"]
+        }
+    },
+    {
+        "name": "build_section_index",
+        "description": "Heuristic keyword matcher that returns strictly bounded page ranges for each ScoreCategory.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"pages": {"type": "array", "items": {"type": "object"}}},
+            "required": ["pages"]
+        }
+    },
+    {
+        "name": "get_promoter_holding",
+        "description": "Fetches promoter holding data.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"query_or_ticker": {"type": "string"}},
+            "required": ["query_or_ticker"]
+        }
+    },
+    {
+        "name": "get_shareholding_pattern",
+        "description": "Fetches broader shareholding pattern.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"query_or_ticker": {"type": "string"}},
+            "required": ["query_or_ticker"]
+        }
+    },
+    {
+        "name": "get_board_composition",
+        "description": "Fetches board of directors / management team composition.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"query_or_ticker": {"type": "string"}},
+            "required": ["query_or_ticker"]
+        }
+    },
+    {
+        "name": "submit_for_analyst_review",
+        "description": "Submits the draft for analyst review. Pauses execution.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"draft_summary": {"type": "string"}},
+            "required": ["draft_summary"]
+        }
+    },
+    {
+        "name": "mcp__finoscale__get_category_text",
+        "description": "Acquires the lock for a category and returns its bounded text. Enforces sequential execution.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"category": {"type": "string"}},
+            "required": ["category"]
+        }
+    },
+    {
+        "name": "mcp__finoscale__submit_category_result",
+        "description": "Releases the lock for a category and stores its score result.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "category": {"type": "string"},
+                "result": {"type": "object"}
+            },
+            "required": ["category", "result"]
+        }
+    }
+]
+TOOL_DEFINITIONS.extend(NEW_TOOLS)
+
 
 @server.list_tools()
 async def list_tools() -> list[Tool]:
