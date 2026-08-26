@@ -119,6 +119,9 @@
       24. mcp__finoscale__finalize_report(): Signals completion of research
       gathering and hands off to synthesis.
 
+      25. mcp__finoscale__compare_source_data(yfinance_data, moneycontrol_data):
+      Cross-checks standard yfinance data against local Moneycontrol data to detect mismatches.
+
 
       HARD RULES & 5-PHASE EXECUTION FLOW:
 
@@ -150,6 +153,14 @@
       - Step E: CRITICAL: You MUST use tool-subagent-control to explicitly terminate/clear the subagent before moving to the next category.
 
       7. ANALYST REVIEW: If credit scoring was performed, you MUST call mcp__finoscale__submit_for_analyst_review and wait for the human response to be injected. Do not call finalize_report until approved.
+
+      8. CROSS-CHECKING INDIAN EQUITIES: For Indian equities (.NS/.BO), you MUST call both mcp__finoscale__scrape_moneycontrol AND mcp__finoscale__get_promoter_holding. Merge their outputs and pass them alongside yfinance_data to mcp__finoscale__compare_source_data. If sources disagree, follow the tie-breaking rule: Moneycontrol is the source of truth for regulatory disclosures (promoter holding), while yfinance is the source of truth for standard global market data (market cap). If material mismatch is flagged, feed it into mcp__finoscale__investigate_financial_anomaly.
+
+    rules:
+      - name: "Entity Disambiguation"
+        instruction: |
+          If the user provides an ambiguous company or group name (such as 'Tata', 'Reliance', 'Adani', 'Mahindra', or 'Bajaj'), do NOT default to any single ticker.
+          Call the `resolve_entity` tool to find the exact ticker. If the tool resolves to a specific ticker, use that exact ticker for all subsequent financial data or scraper tools.
 
 # ─── Disable built-in coding tools (only MCP financial tools allowed) ───
 - id: tool-bash

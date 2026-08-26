@@ -1690,3 +1690,71 @@ def audit_draft_metrics(
     }
 
 
+def cross_check_source_agreement(yfinance_data: dict[str, Any], moneycontrol_data: dict[str, Any]) -> dict[str, Any]:
+    """
+    Deterministically compares globally standard yfinance data against local Moneycontrol data.
+    """
+    mismatches = []
+    
+    # 1. Market Cap
+    y_mc = yfinance_data.get("market_cap")
+    m_mc_cr = moneycontrol_data.get("market_cap_cr")
+    
+    if y_mc is None or m_mc_cr is None:
+        mismatches.append({"field": "market_cap", "status": "DATA_MISSING_IN_ONE_SOURCE", "yfinance": y_mc, "moneycontrol": m_mc_cr})
+    else:
+        try:
+            # Convert yfinance market_cap to Crores
+            y_mc_cr = float(y_mc) / 1e7
+            m_mc_cr_f = float(m_mc_cr)
+            
+            diff = abs(y_mc_cr - m_mc_cr_f)
+            denom = max(y_mc_cr, m_mc_cr_f)
+            rel_diff = diff / denom if denom > 0 else 0.0
+            
+            if rel_diff > 0.05:
+                mismatches.append({
+                    "field": "market_cap", 
+                    "status": "MISMATCH", 
+                    "yfinance_cr": y_mc_cr, 
+                    "moneycontrol_cr": m_mc_cr_f, 
+                    "diff_pct": round(rel_diff * 100, 2)
+                })
+        except Exception:
+            mismatches.append({"field": "market_cap", "status": "DATA_PARSING_ERROR"})
+
+    # 2. Promoter Holding
+    y_promoter = yfinance_data.get("promoter_holding_pct")
+    m_promoter = moneycontrol_data.get("promoter_holding_pct")
+    
+    if y_promoter is None or m_promoter is None:
+        mismatches.append({"field": "promoter_holding_pct", "status": "DATA_MISSING_IN_ONE_SOURCE", "yfinance": y_promoter, "moneycontrol": m_promoter})
+    else:
+        try:
+            y_promoter_scaled = float(y_promoter) * 100
+            # Strip '%' if present
+            if isinstance(m_promoter, str):
+                m_promoter = m_promoter.replace("%", "").strip()
+            m_promoter_f = float(m_promoter)
+            
+            diff = abs(y_promoter_scaled - m_promoter_f)
+            denom = max(y_promoter_scaled, m_promoter_f)
+            rel_diff = diff / denom if denom > 0 else 0.0
+            
+            if rel_diff > 0.05:
+                mismatches.append({
+                    "field": "promoter_holding_pct", 
+                    "status": "MISMATCH", 
+                    "yfinance_pct": y_promoter_scaled, 
+                    "moneycontrol_pct": m_promoter_f, 
+                    "diff_pct": round(rel_diff * 100, 2)
+                })
+        except Exception:
+            mismatches.append({"field": "promoter_holding_pct", "status": "DATA_PARSING_ERROR"})
+            
+    return {
+        "mismatches_found": len(mismatches) > 0,
+        "mismatches": mismatches
+    }
+
+

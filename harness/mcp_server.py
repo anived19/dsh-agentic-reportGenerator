@@ -690,6 +690,24 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
     state = session_mgr.state
     state.turn += 1
 
+    # Bug A Fix: Check for analyst_review_response.json
+    analyst_response_file = session_mgr.session_dir / "analyst_review_response.json"
+    if analyst_response_file.exists():
+        try:
+            import os
+            from schemas import AnalystReviewStatus
+            data = json.loads(analyst_response_file.read_text(encoding="utf-8"))
+            if "status" in data:
+                if data["status"] == "approved":
+                    state.analyst_review_status = AnalystReviewStatus.APPROVED
+                elif data["status"] == "rejected":
+                    state.analyst_review_status = AnalystReviewStatus.REJECTED
+            # Rename to prevent redundant reading
+            os.replace(analyst_response_file, session_mgr.session_dir / "analyst_review_response.json.processed")
+        except Exception:
+            pass
+
+
     if name == "resolve_entity":
         from tools.ticker_resolver import resolve_entity
         query = arguments.get("query", "")
@@ -700,18 +718,57 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
             state.company_name = candidates[0]["name"]
             state.status = AgentStatus.RUNNING
         elif len(candidates) > 1:
-            state.candidate_entities = candidates
-            state.ticker = None
-            state.status = AgentStatus.AWAITING_USER
+            # Force IPC pause directly in Python to prevent LLM bypass
+            options = [f"{c['name']} ({c['ticker']})" for c in candidates]
+            pending_file = session_mgr.session_dir / "ask_user_pending.json"
+            response_file = session_mgr.session_dir / "ask_user_response.json"
+            if response_file.exists(): response_file.unlink()
+            pending_file.write_text(json.dumps({
+                "question": f"Multiple entities found for '{query}'. Please select one:",
+                "options": options,
+                "timestamp": time.time(),
+            }, indent=2), encoding="utf-8")
+            
+            wait_seconds = 0
+            selected = ""
+            while wait_seconds < 120:
+                if response_file.exists():
+                    try:
+                        resp_data = json.loads(response_file.read_text(encoding="utf-8"))
+                        selected = resp_data.get("selected", "")
+                        if selected: break
+                    except Exception: pass
+                time.sleep(0.2)
+                wait_seconds += 0.2
+                
+            if pending_file.exists(): pending_file.unlink()
+            if response_file.exists(): response_file.unlink()
+            
+            if not selected: selected = options[0]
+            
+            matched_candidate = None
+            sel_strip = selected.strip()
+            if sel_strip.isdigit():
+                idx = int(sel_strip) - 1
+                if 0 <= idx < len(candidates):
+                    matched_candidate = candidates[idx]
+            
+            if not matched_candidate:
+                matched_candidate = next((c for c in candidates if c["ticker"].lower() in selected.lower() or c["name"].lower() in selected.lower()), candidates[0])
+                
+            state.candidate_entities = []
+            state.ticker = matched_candidate["ticker"]
+            state.company_name = matched_candidate["name"]
+            state.status = AgentStatus.RUNNING
+            
         else:
             state.candidate_entities = []
             state.status = AgentStatus.RUNNING
         session_mgr.checkpoint()
         return {
             "query": query,
-            "candidate_count": len(candidates),
-            "candidates": candidates,
-            "action_required": "call ask_user immediately" if len(candidates) > 1 else "proceed with data fetching",
+            "resolved_ticker": state.ticker,
+            "resolved_company_name": state.company_name,
         }
 
     elif name == "ask_user":
@@ -805,13 +862,15 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
             "resolved_company_name": state.company_name,
         }
 
-    # Helper guard for all data-fetching tools
     if name in (
         "get_price_snapshot", "get_valuation_multiples", "get_fundamentals",
         "get_quarterly_financials", "get_technicals", "get_ownership",
         "compute_custom_financial_metric", "compute_banking_metrics",
         "compute_saas_metrics", "compute_retail_consumer_metrics",
-        "get_peer_tickers", "investigate_financial_anomaly"
+        "get_peer_tickers", "investigate_financial_anomaly",
+        "scrape_url", "scrape_moneycontrol", "search_web_news",
+        "compare_source_data", "run_structured_aml_sweep", "search_adverse_media",
+        "get_promoter_holding"
     ):
         if state.status == AgentStatus.AWAITING_USER or (len(state.candidate_entities) > 1 and not state.ticker):
             return {
@@ -1254,10 +1313,10 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         state.analyst_review_status = AnalystReviewStatus.PENDING
         session_mgr.checkpoint()
         return {"instruction": "Draft submitted. Suspend operations and wait for human injection."}
-    elif name == "mcp__finoscale__get_category_text":
+    elif name == "get_category_text":
         category = arguments["category"]
         if session_mgr.active_subagent_category is not None:
-            return {"error": f"ERROR: Subagent for {session_mgr.active_subagent_category} is already active. You MUST use mcp__finoscale__submit_category_result to unlock it before spawning the next."}
+            return {"error": f"ERROR: Subagent for {session_mgr.active_subagent_category} is already active. You MUST use submit_category_result to unlock it before spawning the next."}
         session_mgr.active_subagent_category = category
         p_nums = session_mgr.bounded_index.get(category, [])
         cat_text = ""
@@ -1265,7 +1324,7 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
             page_text = next((p["text"] for p in session_mgr.parsed_pages if p["page_num"] == p_num), "")
             cat_text += f"\n--- PAGE {p_num} ---\n{page_text}"
         return {"text": cat_text}
-    elif name == "mcp__finoscale__submit_category_result":
+    elif name == "submit_category_result":
         category = arguments["category"]
         if session_mgr.active_subagent_category != category:
             return {"error": f"ERROR: Active subagent is {session_mgr.active_subagent_category}, but you tried to submit {category}."}
@@ -1278,6 +1337,9 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         session_mgr.active_subagent_category = None
         session_mgr.checkpoint()
         return {"status": "success", "message": f"{category} result stored. You may now terminate this subagent and spawn the next."}
+    elif name == "compare_source_data":
+        from tools.finance_tools import cross_check_source_agreement
+        return cross_check_source_agreement(arguments["yfinance_data"], arguments["moneycontrol_data"])
     else:
         raise ValueError(f"Unknown MCP tool: {name}")
 
@@ -1362,7 +1424,7 @@ NEW_TOOLS = [
         }
     },
     {
-        "name": "mcp__finoscale__get_category_text",
+        "name": "get_category_text",
         "description": "Acquires the lock for a category and returns its bounded text. Enforces sequential execution.",
         "inputSchema": {
             "type": "object",
@@ -1371,7 +1433,7 @@ NEW_TOOLS = [
         }
     },
     {
-        "name": "mcp__finoscale__submit_category_result",
+        "name": "submit_category_result",
         "description": "Releases the lock for a category and stores its score result.",
         "inputSchema": {
             "type": "object",
@@ -1381,9 +1443,26 @@ NEW_TOOLS = [
             },
             "required": ["category", "result"]
         }
+    },
+    {
+        "name": "compare_source_data",
+        "description": "Cross-checks globally standard yfinance data against local Moneycontrol data to detect mismatches. Requires merged outputs from scrape_moneycontrol and get_promoter_holding.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "yfinance_data": {"type": "object"},
+                "moneycontrol_data": {"type": "object"}
+            },
+            "required": ["yfinance_data", "moneycontrol_data"]
+        }
     }
 ]
-TOOL_DEFINITIONS.extend(NEW_TOOLS)
+
+_existing_names = {t["name"] for t in TOOL_DEFINITIONS}
+for t in NEW_TOOLS:
+    if t["name"] not in _existing_names:
+        TOOL_DEFINITIONS.append(t)
+        _existing_names.add(t["name"])
 
 
 @server.list_tools()

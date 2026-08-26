@@ -12,6 +12,15 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+import os
+from dotenv import load_dotenv
+
+# Load .env variables into os.environ before anything else so subprocesses inherit them
+load_dotenv()
+
+# Inject Telemetry Lockdown directly into os.environ.
+# This satisfies dsh_driver.py's check and avoids DSH's Node.js crash (which happens if it's in .env).
+os.environ["DSH_TELEMETRY_DISABLED"] = "1"
 
 from harness.dsh_orchestrator import run_dsh_orchestrator
 from harness.intake import detect_report_type, extract_editorial_goal, extract_intake_priors

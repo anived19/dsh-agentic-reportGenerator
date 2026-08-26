@@ -23,6 +23,10 @@ import time
 from datetime import date
 from pathlib import Path
 from typing import Any, Callable, Optional
+from dotenv import load_dotenv, find_dotenv
+
+# Force load .env from project root
+load_dotenv(find_dotenv(), override=True)
 
 from config import settings
 from harness.synthesis import render_aml_markdown, run_chief_editor
@@ -182,15 +186,15 @@ def run_dsh_orchestrator(
     )
 
     # 3. Setup Process Environment
-    env = os.environ.copy()
-    if not env.get("DSH_TELEMETRY_DISABLED"):
+    child_env = os.environ.copy()
+    if not child_env.get("DSH_TELEMETRY_DISABLED"):
         raise RuntimeError("Strict telemetry lockdown failed: DSH_TELEMETRY_DISABLED must be set in the environment before spawning DSH.")
-    env["FINOSCALE_SESSION_ID"] = session_id
-    env["DSH_SESSION_ID"] = session_id
-    env["GEMINI_API_KEY"] = settings.gemini_api_key
-    env["GOOGLE_API_KEY"] = settings.gemini_api_key
-    env["TAVILY_API_KEY"] = settings.tavily_api_key
-    env["DSH_PERMISSION_MODE"] = "danger-full-access"
+    child_env["FINOSCALE_SESSION_ID"] = session_id
+    child_env["DSH_SESSION_ID"] = session_id
+    child_env["GEMINI_API_KEY"] = settings.gemini_api_key
+    child_env["GOOGLE_API_KEY"] = settings.gemini_api_key
+    child_env["TAVILY_API_KEY"] = settings.tavily_api_key
+    child_env["DSH_PERMISSION_MODE"] = "danger-full-access"
 
     npx_bin = _find_npx_executable()
     cordis_path = Path("cordis.yml").resolve()
@@ -210,7 +214,7 @@ def run_dsh_orchestrator(
         stderr=subprocess.STDOUT,
         text=True,
         encoding="utf-8",
-        env=env,
+        env=child_env,
         shell=False,
     )
 
@@ -231,6 +235,7 @@ def run_dsh_orchestrator(
                     opts = p_data.get("options", [])
                     choice = ask_fn(q_text, opts)
                     response_file.write_text(json.dumps({"selected": choice}), encoding="utf-8")
+                    pending_file.rename(session_dir / "ask_user_pending.json.processed")
                 except Exception as exc:
                     logger.warning("Error handling ask_user IPC: %s", exc)
                     
@@ -263,7 +268,10 @@ def run_dsh_orchestrator(
     if proc.stdout:
         for line in iter(proc.stdout.readline, ""):
             line_str = line.rstrip()
-            print(f"  [DSH] {line_str}", flush=True)
+            try:
+                print(f"  [DSH] {line_str}", flush=True)
+            except UnicodeEncodeError:
+                print(f"  [DSH] {line_str.encode('ascii', 'replace').decode('ascii')}", flush=True)
             dsh_stdout_lines.append(line_str)
         proc.stdout.close()
 
