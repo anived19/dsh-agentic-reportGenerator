@@ -250,7 +250,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "description": (
             "Resolve a natural-language company or conglomerate reference to candidate ticker symbols. "
             "Returns a list of candidate dicts with ticker, name, exchange, sector, confidence. "
-            "If more than one candidate is returned, you MUST immediately call ask_user."
+            "Disambiguation is handled internally and resolved_ticker in the response is already final - no follow-up tool call is needed."
         ),
         "inputSchema": {
             "type": "object",
@@ -294,9 +294,8 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "ticker": {"type": "string", "description": "Stock ticker symbol (e.g. 'TCS.NS', 'AAPL')."}
             },
-            "required": ["ticker"],
+            
         },
     },
     {
@@ -307,9 +306,8 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "ticker": {"type": "string", "description": "Stock ticker symbol."}
             },
-            "required": ["ticker"],
+            
         },
     },
     {
@@ -320,9 +318,8 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "ticker": {"type": "string", "description": "Stock ticker symbol."}
             },
-            "required": ["ticker"],
+            
         },
     },
     {
@@ -333,9 +330,8 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "ticker": {"type": "string", "description": "Stock ticker symbol."}
             },
-            "required": ["ticker"],
+            
         },
     },
     {
@@ -346,9 +342,8 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "ticker": {"type": "string", "description": "Stock ticker symbol."}
             },
-            "required": ["ticker"],
+            
         },
     },
     {
@@ -359,9 +354,8 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "ticker": {"type": "string", "description": "Stock ticker symbol."}
             },
-            "required": ["ticker"],
+            
         },
     },
     {
@@ -377,14 +371,13 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                     "type": "string",
                     "description": "Mathematical formula to evaluate (e.g. 'cagr(start_val, end_val, years)').",
                 },
-                "ticker": {"type": "string", "description": "Ticker symbol context."},
                 "metric_name": {"type": "string", "description": "Name for the computed metric."},
                 "context": {
                     "type": "object",
                     "description": "Variable bindings for the formula (e.g. {'start_val': 100, 'end_val': 150, 'years': 3}).",
                 },
             },
-            "required": ["expression", "ticker", "metric_name"],
+            "required": ["expression", "metric_name"],
         },
     },
     {
@@ -397,7 +390,6 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "Search query string."},
-                "ticker": {"type": "string", "description": "Ticker symbol context.", "default": ""},
                 "depth": {"type": "string", "enum": ["basic", "advanced"], "default": "basic"},
             },
             "required": ["query"],
@@ -414,7 +406,6 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "entity_name": {"type": "string", "description": "Company name to screen."},
-                "ticker": {"type": "string", "description": "Ticker symbol.", "default": ""},
             },
             "required": ["entity_name"],
         },
@@ -456,9 +447,8 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "ticker": {"type": "string", "description": "Stock ticker symbol (e.g. 'JPM', 'HDFCBANK.NS')."}
             },
-            "required": ["ticker"],
+            
         },
     },
     {
@@ -471,9 +461,8 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "ticker": {"type": "string", "description": "Stock ticker symbol (e.g. 'TCS.NS', 'MSFT')."}
             },
-            "required": ["ticker"],
+            
         },
     },
     {
@@ -486,9 +475,8 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "ticker": {"type": "string", "description": "Stock ticker symbol (e.g. 'MARUTI.NS', 'WMT')."}
             },
-            "required": ["ticker"],
+            
         },
     },
     {
@@ -500,10 +488,9 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "ticker": {"type": "string", "description": "Target stock ticker symbol."},
                 "max_peers": {"type": "integer", "description": "Maximum number of peers to return (default 4)."},
             },
-            "required": ["ticker"],
+            
         },
     },
     {
@@ -516,14 +503,13 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "ticker": {"type": "string", "description": "Stock ticker symbol."},
                 "anomaly_type": {"type": "string", "description": "Type of anomaly (e.g. 'QoQ Net Income Plunge', 'Debt Surge')."},
                 "metric_impacted": {"type": "string", "description": "Specific metric impacted."},
                 "observed_value": {"type": "string", "description": "Observed value in latest quarter."},
                 "prior_value": {"type": "string", "description": "Prior or baseline value."},
                 "query_hint": {"type": "string", "description": "Optional search hint."},
             },
-            "required": ["ticker", "anomaly_type"],
+            "required": ["anomaly_type"],
         },
     },
     {
@@ -655,10 +641,6 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "query_or_ticker": {
-                    "type": "string",
-                    "description": "Stock ticker (e.g. 'TCS.NS', 'RELIANCE', 'HDFCBANK') or company name ('Tata Motors') or full Moneycontrol URL.",
-                },
                 "fields": {
                     "type": "array",
                     "items": {"type": "string"},
@@ -674,8 +656,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                     "default": False,
                     "description": "If True, uses headless Chromium for dynamic widgets.",
                 },
-            },
-            "required": ["query_or_ticker"],
+            }
         },
     },
 ]
@@ -746,15 +727,9 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
             
             if not selected: selected = options[0]
             
-            matched_candidate = None
-            sel_strip = selected.strip()
-            if sel_strip.isdigit():
-                idx = int(sel_strip) - 1
-                if 0 <= idx < len(candidates):
-                    matched_candidate = candidates[idx]
-            
+            matched_candidate = _match_candidate(selected, candidates)
             if not matched_candidate:
-                matched_candidate = next((c for c in candidates if c["ticker"].lower() in selected.lower() or c["name"].lower() in selected.lower()), candidates[0])
+                matched_candidate = candidates[0]
                 
             state.candidate_entities = []
             state.ticker = matched_candidate["ticker"]
@@ -772,6 +747,14 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         }
 
     elif name == "ask_user":
+        if state.ticker and not state.candidate_entities:
+            logger.info("ask_user short-circuit: state.ticker already resolved to %s and no candidates pending.", state.ticker)
+            return {
+                "selected": state.company_name,
+                "resolved_ticker": state.ticker,
+                "resolved_company_name": state.company_name,
+            }
+
         question = arguments.get("question", "")
         options = arguments.get("options", [])
         if not options and state.candidate_entities:
@@ -819,18 +802,10 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
             selected = options[0]
             logger.warning("ask_user timed out; defaulting to %s", selected)
 
-        # Match selected entity
-        matched_candidate = None
+        matched_candidate = _match_candidate(selected, state.candidate_entities)
+        
         ticker_match = re.search(r"\(([A-Za-z0-9\.\^=-]+)\)", selected)
         extracted_sym = ticker_match.group(1).strip() if ticker_match else None
-
-        for c in state.candidate_entities:
-            if extracted_sym and c["ticker"].lower() == extracted_sym.lower():
-                matched_candidate = c
-                break
-            if c["ticker"].lower() in selected.lower() or c["name"].lower() in selected.lower():
-                matched_candidate = c
-                break
 
         if matched_candidate:
             state.ticker = matched_candidate["ticker"]
@@ -880,7 +855,7 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
 
     if name == "get_price_snapshot":
         from tools.finance_tools import get_price_snapshot
-        ticker = arguments.get("ticker") or state.ticker
+        ticker = state.ticker
         if not ticker:
             return {"error": "No ticker specified or resolved. Call resolve_entity first."}
         session_mgr.category_attempts["price_snapshot"] += 1
@@ -893,7 +868,7 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
 
     elif name == "get_valuation_multiples":
         from tools.finance_tools import get_valuation_multiples
-        ticker = arguments.get("ticker") or state.ticker
+        ticker = state.ticker
         if not ticker:
             return {"error": "No ticker specified or resolved. Call resolve_entity first."}
         session_mgr.category_attempts["valuation_multiples"] += 1
@@ -904,7 +879,7 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
 
     elif name == "get_fundamentals":
         from tools.finance_tools import get_fundamentals
-        ticker = arguments.get("ticker") or state.ticker
+        ticker = state.ticker
         if not ticker:
             return {"error": "No ticker specified or resolved. Call resolve_entity first."}
         session_mgr.category_attempts["fundamentals"] += 1
@@ -915,7 +890,7 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
 
     elif name == "get_quarterly_financials":
         from tools.finance_tools import get_quarterly_financials
-        ticker = arguments.get("ticker") or state.ticker
+        ticker = state.ticker
         if not ticker:
             return {"error": "No ticker specified or resolved. Call resolve_entity first."}
         session_mgr.category_attempts["quarterly_financials"] += 1
@@ -926,7 +901,7 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
 
     elif name == "get_technicals":
         from tools.finance_tools import get_technicals
-        ticker = arguments.get("ticker") or state.ticker
+        ticker = state.ticker
         if not ticker:
             return {"error": "No ticker specified or resolved. Call resolve_entity first."}
         session_mgr.category_attempts["technicals"] += 1
@@ -937,7 +912,7 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
 
     elif name == "get_ownership":
         from tools.finance_tools import get_ownership
-        ticker = arguments.get("ticker") or state.ticker
+        ticker = state.ticker
         if not ticker:
             return {"error": "No ticker specified or resolved. Call resolve_entity first."}
         session_mgr.category_attempts["ownership"] += 1
@@ -948,7 +923,7 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
 
     elif name == "compute_banking_metrics":
         from tools.finance_tools import compute_banking_metrics
-        ticker = arguments.get("ticker") or state.ticker
+        ticker = state.ticker
         if not ticker:
             return {"error": "No ticker specified or resolved. Call resolve_entity first."}
         res = compute_banking_metrics(ticker)
@@ -962,7 +937,7 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
 
     elif name == "compute_saas_metrics":
         from tools.finance_tools import compute_saas_metrics
-        ticker = arguments.get("ticker") or state.ticker
+        ticker = state.ticker
         if not ticker:
             return {"error": "No ticker specified or resolved. Call resolve_entity first."}
         res = compute_saas_metrics(ticker)
@@ -976,7 +951,7 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
 
     elif name == "compute_retail_consumer_metrics":
         from tools.finance_tools import compute_retail_consumer_metrics
-        ticker = arguments.get("ticker") or state.ticker
+        ticker = state.ticker
         if not ticker:
             return {"error": "No ticker specified or resolved. Call resolve_entity first."}
         res = compute_retail_consumer_metrics(ticker)
@@ -990,7 +965,7 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
 
     elif name == "get_peer_tickers":
         from tools.peer_resolver import get_peer_tickers
-        ticker = arguments.get("ticker") or state.ticker
+        ticker = state.ticker
         if not ticker:
             return {"error": "No ticker specified or resolved. Call resolve_entity first."}
         max_peers = arguments.get("max_peers", 4)
@@ -1009,7 +984,7 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
 
     elif name == "investigate_financial_anomaly":
         from tools.search_tools import investigate_financial_anomaly
-        ticker = arguments.get("ticker") or state.ticker
+        ticker = state.ticker
         if not ticker:
             return {"error": "No ticker specified or resolved. Call resolve_entity first."}
         anomaly_type = arguments.get("anomaly_type", "Financial Anomaly")
@@ -1049,7 +1024,7 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
 
     elif name == "compute_custom_financial_metric":
         from tools.finance_tools import compute_custom_financial_metric
-        ticker = arguments.get("ticker") or state.ticker
+        ticker = state.ticker
         res = compute_custom_financial_metric(
             expression=arguments.get("expression", ""),
             ticker=ticker,
@@ -1064,7 +1039,7 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
     elif name == "search_web_news":
         from tools.search_tools import search_web_news
         query = arguments.get("query", "")
-        ticker = arguments.get("ticker") or state.ticker or ""
+        ticker = state.ticker or ""
         depth = arguments.get("depth", "basic")
 
         if state.telemetry.tavily_calls >= state.telemetry.tavily_calls_budget:
@@ -1102,8 +1077,8 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
 
     elif name == "run_structured_aml_sweep":
         from tools.aml_tools import run_structured_aml_sweep
-        entity_name = arguments.get("entity_name") or state.company_name or "Tata Consultancy Services"
-        ticker = arguments.get("ticker") or state.ticker or ""
+        entity_name = state.company_name or arguments.get("entity_name") or ""
+        ticker = state.ticker or ""
 
         session_mgr.category_attempts["aml_sweep"] += 1
         res = run_structured_aml_sweep(entity_name=entity_name, ticker=ticker)
@@ -1124,7 +1099,7 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
 
     elif name == "search_adverse_media":
         from tools.aml_tools import search_adverse_media
-        entity_name = arguments.get("entity_name") or state.company_name or ""
+        entity_name = state.company_name or arguments.get("entity_name") or ""
         focus = arguments.get("focus", "")
         depth = arguments.get("depth", "basic")
 
@@ -1150,7 +1125,7 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
 
     elif name == "scrape_moneycontrol":
         from tools.scraper_tools import scrape_moneycontrol
-        query_or_ticker = arguments.get("query_or_ticker") or state.ticker or state.company_name or ""
+        query_or_ticker = state.ticker or state.company_name
         fields = arguments.get("fields")
         section = arguments.get("section", "overview")
         use_browser = arguments.get("use_browser", False)
@@ -1299,13 +1274,16 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         return index
     elif name == "get_promoter_holding":
         from tools.moneycontrol_tools import get_promoter_holding
-        return get_promoter_holding(arguments["query_or_ticker"])
+        query_or_ticker = state.ticker or state.company_name or arguments.get("query_or_ticker")
+        return get_promoter_holding(query_or_ticker)
     elif name == "get_shareholding_pattern":
         from tools.moneycontrol_tools import get_shareholding_pattern
-        return get_shareholding_pattern(arguments["query_or_ticker"])
+        query_or_ticker = state.ticker or state.company_name or arguments.get("query_or_ticker")
+        return get_shareholding_pattern(query_or_ticker)
     elif name == "get_board_composition":
         from tools.moneycontrol_tools import get_board_composition
-        return get_board_composition(arguments["query_or_ticker"])
+        query_or_ticker = state.ticker or state.company_name or arguments.get("query_or_ticker")
+        return get_board_composition(query_or_ticker)
     elif name == "submit_for_analyst_review":
         from schemas import AnalystReviewStatus
         pending_file = session_mgr.session_dir / "analyst_review_pending.json"
@@ -1392,8 +1370,7 @@ NEW_TOOLS = [
         "description": "Fetches promoter holding data.",
         "inputSchema": {
             "type": "object",
-            "properties": {"query_or_ticker": {"type": "string"}},
-            "required": ["query_or_ticker"]
+            "properties": {}
         }
     },
     {
@@ -1401,8 +1378,7 @@ NEW_TOOLS = [
         "description": "Fetches broader shareholding pattern.",
         "inputSchema": {
             "type": "object",
-            "properties": {"query_or_ticker": {"type": "string"}},
-            "required": ["query_or_ticker"]
+            "properties": {}
         }
     },
     {
@@ -1410,8 +1386,7 @@ NEW_TOOLS = [
         "description": "Fetches board of directors / management team composition.",
         "inputSchema": {
             "type": "object",
-            "properties": {"query_or_ticker": {"type": "string"}},
-            "required": ["query_or_ticker"]
+            "properties": {}
         }
     },
     {
@@ -1476,6 +1451,30 @@ async def list_tools() -> list[Tool]:
         )
         for t in TOOL_DEFINITIONS
     ]
+
+
+def _match_candidate(selected: str, candidates: list[dict]) -> dict | None:
+    if not candidates:
+        return None
+    sel_strip = selected.strip()
+    if sel_strip.isdigit():
+        idx = int(sel_strip) - 1
+        if 0 <= idx < len(candidates):
+            return candidates[idx]
+            
+    ticker_match = re.search(r"\(([A-Za-z0-9\.\^=-]+)\)", selected)
+    extracted_sym = ticker_match.group(1).strip() if ticker_match else None
+    
+    if extracted_sym:
+        for c in candidates:
+            if c["ticker"].lower() == extracted_sym.lower():
+                return c
+                
+    for c in candidates:
+        if c["ticker"].lower() in selected.lower() or c["name"].lower() in selected.lower():
+            return c
+            
+    return None
 
 
 @server.call_tool()

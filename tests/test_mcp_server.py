@@ -208,6 +208,9 @@ def test_aml_sweep_dispatch_produces_valid_state(monkeypatch):
     ]
 
     monkeypatch.setattr("tools.aml_tools.run_structured_aml_sweep", lambda **kw: mock_findings)
+    
+    session_mgr.state.company_name = None
+    session_mgr.state.ticker = None
 
     result = _dispatch_tool("run_structured_aml_sweep", {"entity_name": "Test Corp", "ticker": "TEST.NS"})
     assert isinstance(result, list)
@@ -422,4 +425,64 @@ def test_bug_b_get_category_text_lock():
     assert "error" not in res3
     assert session_mgr.active_subagent_category is None
 
+
+def test_ticker_precedence_after_resolution(monkeypatch):
+    """
+    Regression test: verify that once state.ticker is resolved, it takes precedence
+    over any LLM-supplied ticker argument in downstream tools.
+    """
+    from harness.mcp_server import _dispatch_tool, session_mgr
+    from schemas import AgentStatus
+    
+    # 1. Simulate a completed disambiguation flow
+    session_mgr.state.ticker = "RESOLVED.NS"
+    session_mgr.state.company_name = "Resolved Company"
+    session_mgr.state.status = AgentStatus.RUNNING
+    
+    # 2. Call a downstream data tool with a *different* ticker in arguments
+    with patch("tools.finance_tools.get_price_snapshot") as mock_price:
+        mock_price.return_value = {"current_price": 100.0, "currency": "INR"}
+        
+        # The LLM supplies "WRONG.NS" as an argument
+        res = _dispatch_tool("get_price_snapshot", {"ticker": "WRONG.NS"})
+        
+        # 3. Assert the handler actually used the resolved state.ticker ("RESOLVED.NS")
+        mock_price.assert_called_once_with("RESOLVED.NS")
+        assert res.get("current_price") == 100.0
+
+
+def test_redundant_ask_user_does_not_corrupt_resolved_ticker(tmp_path, monkeypatch):
+    """
+    Regression test: verify that a redundant call to ask_user (e.g. from an outdated LLM prompt)
+    does not overwrite a ticker that was already correctly resolved by resolve_entity.
+    """
+    from harness.mcp_server import _dispatch_tool, session_mgr
+    from schemas import AgentStatus
+    import json
+
+    # 1. Mock time.sleep to simulate human injecting the response for resolve_entity
+    def fake_sleep(dur):
+        resp_file = session_mgr.session_dir / "ask_user_response.json"
+        resp_file.write_text(json.dumps({"selected": "2"}), encoding="utf-8")
+
+    monkeypatch.setattr("time.sleep", fake_sleep)
+    
+    # 2. Call resolve_entity with a query that produces multiple candidates
+    _dispatch_tool("resolve_entity", {"query": "tata"})
+    
+    # Verify the initial resolution was successful
+    assert session_mgr.state.ticker is not None
+    assert session_mgr.state.candidate_entities == []
+    
+    initial_resolved_ticker = session_mgr.state.ticker
+    
+    # 3. Simulate the LLM making a redundant call to ask_user with arbitrary hallucinated options
+    ask_user_res = _dispatch_tool("ask_user", {
+        "question": "Which one did you mean?",
+        "options": ["Some Other Company (WRONG.NS)"]
+    })
+    
+    # 4. Verify that ask_user short-circuited and did NOT overwrite state.ticker
+    assert session_mgr.state.ticker == initial_resolved_ticker
+    assert ask_user_res.get("resolved_ticker") == initial_resolved_ticker
 

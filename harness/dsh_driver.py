@@ -156,7 +156,6 @@ def run_dsh_orchestrator(
         f"AML Compliance Screening: {run_aml}\n\n"
         f"EXECUTION INSTRUCTIONS:\n"
         f"1. If company/ticker is not yet resolved, call mcp__finoscale__resolve_entity.\n"
-        f"   If >1 candidate is returned, immediately call mcp__finoscale__ask_user.\n"
         f"2. Dynamically fetch required market data categories using MCP tools:\n"
         f"   - mcp__finoscale__get_price_snapshot\n"
         f"   - mcp__finoscale__get_valuation_multiples\n"
