@@ -668,6 +668,8 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
 
 def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
     """Execute a tool, update state, and return structured result."""
+    # Rate-limit: keep under 15 RPM for Gemini free-tier quota
+    time.sleep(4)
     state = session_mgr.state
     state.turn += 1
 
@@ -690,6 +692,16 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
 
 
     if name == "resolve_entity":
+        # Short-circuit: prevent LLM from overriding a resolved ticker
+        if state.ticker:
+            logger.info("resolve_entity short-circuit: LLM attempted to re-resolve, forcing %s", state.ticker)
+            return {
+                "query": arguments.get("query", ""),
+                "resolved_ticker": state.ticker,
+                "resolved_company_name": state.company_name,
+                "note": "Entity is already resolved for this session. Do not call this tool again."
+            }
+
         from tools.ticker_resolver import resolve_entity
         query = arguments.get("query", "")
         candidates = resolve_entity(query)

@@ -61,6 +61,8 @@ def test_tool_definitions_registry():
 
 def test_dispatch_resolve_entity():
     """Test dispatch to resolve_entity and candidate storage."""
+    session_mgr.state.ticker = None
+    session_mgr.state.company_name = None
     result = _dispatch_tool("resolve_entity", {"query": "TCS.NS"})
     assert isinstance(result, dict)
     assert result.get("resolved_ticker") == "TCS.NS"
@@ -173,6 +175,8 @@ def test_mcp_async_list_tools():
 
 def test_mcp_async_call_tool_success():
     """Verify async call_tool successfully executes and serializes tool outputs."""
+    session_mgr.state.ticker = None
+    session_mgr.state.company_name = None
     contents = asyncio.run(call_tool("resolve_entity", {"query": "INFY.NS"}))
     assert len(contents) == 1
     assert contents[0].type == "text"
