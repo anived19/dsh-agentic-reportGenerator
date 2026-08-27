@@ -478,6 +478,13 @@ class ScoreCategoryResult(BaseModel):
     discomforts: list[PageCitedClaim] = Field(default_factory=list)
     raw_evidence_snippets: str
 
+    @field_validator("raw_evidence_snippets", mode="before")
+    @classmethod
+    def list_to_string(cls, v: Any) -> str:
+        if isinstance(v, list):
+            return " ".join(str(item) for item in v)
+        return v
+
 
 class AgentStatus(str, Enum):
     RUNNING = "running"

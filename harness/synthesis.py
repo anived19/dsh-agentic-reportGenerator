@@ -71,6 +71,7 @@ _SECTION_HEADINGS: dict[str, str] = {
     "scenario_outlook":        "## {n}-Month Outlook",   # {n} filled at runtime
     "peer_benchmarking":       "## Peer Benchmarking & Industry Analysis",
     "sector_kpis":             "## Specialized Sector Performance KPIs",
+    "credit_scoring":          "## Credit Scoring & Governance Scorecard",
 }
 
 
@@ -78,6 +79,15 @@ _SECTION_HEADINGS: dict[str, str] = {
 # Section instruction builders — one function per section type.
 # Each returns a plain-English instruction string fed to the Chief Editor.
 # ---------------------------------------------------------------------------
+
+def _instr_credit_scoring(**kwargs) -> str:
+    return (
+        "Write a Credit Scoring & Governance Scorecard section summarizing the 4-pillar subagent evaluation. "
+        "Format as a Markdown table with columns: Category | Score | Summary Verdict. "
+        "The categories are Finances, Business & Management, Hygiene, and Banking. "
+        "Use the exact score_value and summary from the score_results array. "
+        "Below the table, provide a brief 2-3 sentence overall governance and risk verdict based on the scores."
+    )
 
 def _instr_executive_summary(outlook_label: str, market_metrics: Optional[MarketMetrics] = None, **kwargs) -> str:
     breakout_text = f"breakout status '{market_metrics.breakout_status}'" if market_metrics and market_metrics.breakout_status else "range-bound/breakout positioning"

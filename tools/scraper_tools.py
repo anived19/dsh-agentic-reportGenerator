@@ -516,6 +516,27 @@ def scrape_moneycontrol(
             if len(cells) == 2 and cells[0] and cells[1] and cells[1] != "--":
                 key_metrics[cells[0]] = cells[1]
 
+    # Parse TTM Revenue/Net Sales from tables (often has multiple columns)
+    rev_ttm = 0.0
+    for table_info in scrape_res.get("tables", []):
+        for row in table_info.get("rows", []):
+            cells = row.get("cells", [])
+            if cells and isinstance(cells[0], str):
+                row_header = cells[0].lower()
+                if "net sales" in row_header or "total income" in row_header or "revenue" in row_header:
+                    # Extract the highest numeric value (usually the Annual or TTM column vs quarterly)
+                    for cell in cells[1:]:
+                        if isinstance(cell, str):
+                            cleaned = re.sub(r"[^\d\.-]", "", cell)
+                            try:
+                                val = float(cleaned)
+                                if val > rev_ttm:
+                                    rev_ttm = val
+                            except ValueError:
+                                pass
+    # Moneycontrol typically reports these figures in Rs. Crores
+    final_revenue_ttm = rev_ttm * 10000000 if rev_ttm > 0 else 0.0
+
     # Normalized extraction of high-value Indian market metrics
     overview_metrics = {
         "company_name": meta_info.get("company_name") or scrape_res.get("title", ""),
@@ -535,6 +556,7 @@ def scrape_moneycontrol(
         "20d_avg_volume": key_metrics.get("20D Avg Volume"),
         "20d_avg_delivery_pct": key_metrics.get("20D Avg Delivery(%)"),
         "face_value": key_metrics.get("Face Value"),
+        "revenue_ttm": final_revenue_ttm,
     }
 
     # Selective field filtering if agent requested specific metrics

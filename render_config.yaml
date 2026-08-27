@@ -17,6 +17,7 @@ report_types:
       - scenario_outlook
     layer2_sections:
       - aml_abc_screening   # only included when --aml flag is set
+      - credit_scoring
 
   valuation:
     layer1_sections:
@@ -28,6 +29,7 @@ report_types:
       - scenario_outlook
     layer2_sections:
       - aml_abc_screening
+      - credit_scoring
 
   equity:
     layer1_sections:
@@ -42,6 +44,7 @@ report_types:
       - scenario_outlook
     layer2_sections:
       - aml_abc_screening
+      - credit_scoring
 
   general:
     layer1_sections:
@@ -52,6 +55,7 @@ report_types:
       - scenario_outlook
     layer2_sections:
       - aml_abc_screening
+      - credit_scoring
 
 # Section metadata — used by .agents/skills/pdf-report-generator/SKILL.md
 # and for documentation. Not read at runtime by the renderer itself; the
@@ -114,3 +118,8 @@ section_specs:
       Sources: OFAC SDN, OpenSanctions, World Bank Debarred, UN Consolidated List,
       EU Sanctions, SEC EDGAR FCPA, TI CPI, FATF grey/black list snapshot,
       Tavily adverse-media search (SEBI, ED, SFO/NCA domains).
+
+  credit_scoring:
+    heading: "Credit Scoring & Governance Scorecard"
+    layer: 2
+    description: "4-pillar quantitative subagent scorecard evaluating Finances, Business & Management, Hygiene, and Banking compliance."

@@ -1221,6 +1221,18 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
                 instruction=s.get("custom_instruction") or s.get("instruction"),
                 emphasis=s.get("emphasis", ""),
             ))
+            
+        if state.score_results:
+            if not any(s.key == "credit_scoring" for s in sec_specs):
+                sec_specs.append(SectionSpec(
+                    key="credit_scoring",
+                    title="Credit Scoring & Governance Scorecard",
+                    include=True,
+                    order=len(sec_specs) + 1,
+                    instruction="Auto-generated credit scoring template.",
+                    emphasis=""
+                ))
+                
         state.report_spec = ReportSpec(
             sections=sec_specs,
             rationale=rationale,
@@ -1293,6 +1305,18 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
                     "error": "compare_source_data was executed with empty dictionaries. You must successfully extract data via scrape_moneycontrol and get_price_snapshot/get_fundamentals first."
                 }
 
+            # --- Cross-Source State Reconciliation (Factual TTM Revenue Fix) ---
+            yf_ttm = yf_data.get("revenue_ttm", 0) or 0
+            mc_ttm = mc_data.get("revenue_ttm", 0) or 0
+            
+            if yf_ttm and mc_ttm:
+                variance = abs(yf_ttm - mc_ttm) / max(yf_ttm, mc_ttm)
+                if variance > 0.10:
+                    if state.market_data:
+                        state.market_data.revenue_ttm = mc_ttm
+                        state.market_data.revenue_ttm_formatted = f"Rs. {mc_ttm/10000000:,.2f} Cr (Reconciled from Moneycontrol)"
+                        logger.info(f"Reconciliation: Overwrote yfinance revenue_ttm with Moneycontrol figure (variance {variance:.2%})")
+
         state.status = AgentStatus.DONE
         final_path = session_mgr.dump_final_session()
         return {
@@ -1326,23 +1350,48 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         return index
     elif name == "get_promoter_holding":
         from tools.moneycontrol_tools import get_promoter_holding
-        query_or_ticker = state.ticker or state.company_name or arguments.get("query_or_ticker")
+        query_or_ticker = state.company_name or state.ticker or arguments.get("query_or_ticker")
         return get_promoter_holding(query_or_ticker)
     elif name == "get_shareholding_pattern":
         from tools.moneycontrol_tools import get_shareholding_pattern
-        query_or_ticker = state.ticker or state.company_name or arguments.get("query_or_ticker")
+        query_or_ticker = state.company_name or state.ticker or arguments.get("query_or_ticker")
         return get_shareholding_pattern(query_or_ticker)
     elif name == "get_board_composition":
         from tools.moneycontrol_tools import get_board_composition
-        query_or_ticker = state.ticker or state.company_name or arguments.get("query_or_ticker")
+        query_or_ticker = state.company_name or state.ticker or arguments.get("query_or_ticker")
         return get_board_composition(query_or_ticker)
     elif name == "submit_for_analyst_review":
         from schemas import AnalystReviewStatus
         pending_file = session_mgr.session_dir / "analyst_review_pending.json"
+        response_file = session_mgr.session_dir / "analyst_review_response.json"
+        
         pending_file.write_text(json.dumps(arguments), encoding="utf-8")
         state.analyst_review_status = AnalystReviewStatus.PENDING
         session_mgr.checkpoint()
-        return {"instruction": "Draft submitted. Suspend operations and wait for human injection."}
+        
+        logger.info("submit_for_analyst_review invoked. Pausing MCP thread for human input...")
+        wait_seconds = 0
+        max_wait = 120  # 2 minute timeout
+
+        while wait_seconds < max_wait:
+            if response_file.exists():
+                try:
+                    resp = json.loads(response_file.read_text(encoding="utf-8"))
+                    if resp.get("status") == "APPROVED":
+                        state.analyst_review_status = AnalystReviewStatus.APPROVED
+                        return {"status": "success", "instruction": "Approved. Proceed to finalize_report."}
+                    elif resp.get("status") == "REJECTED":
+                        state.analyst_review_status = AnalystReviewStatus.REJECTED
+                        response_file.unlink(missing_ok=True)
+                        pending_file.unlink(missing_ok=True)
+                        return {"error": f"Analyst REJECTED the draft. Feedback: {resp.get('feedback')}. Fix this before resubmitting."}
+                except json.JSONDecodeError:
+                    pass
+            time.sleep(0.5)  # Use synchronous sleep like in ask_user
+            wait_seconds += 0.5
+
+        # If the loop exits without a response:
+        return {"error": "TIMEOUT: Analyst did not respond. You MUST call submit_for_analyst_review again."}
     elif name == "get_category_text":
         category = arguments["category"]
         if session_mgr.active_subagent_category is not None:

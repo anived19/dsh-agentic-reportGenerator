@@ -31,26 +31,33 @@ def fetch_annual_report(company_or_ticker: str) -> str:
     from tools.search_tools import search_web_news
     import httpx
     
-    query = f"{company_or_ticker} annual report filetype:pdf"
-    results = search_web_news(query=query, depth="basic", max_results=3)
-    
-    pdf_url = None
-    for r in results:
-        if r.get("url", "").endswith(".pdf"):
-            pdf_url = r["url"]
-            break
-            
-    if not pdf_url:
-        raise ValueError(f"Could not find an annual report PDF for {company_or_ticker}")
-        
     session_id = os.environ.get("FINOSCALE_SESSION_ID", "default_session")
     isolated_dir = settings.cache_dir / "sessions" / session_id / "reports"
     isolated_dir.mkdir(parents=True, exist_ok=True)
     
     pdf_path = isolated_dir / f"{company_or_ticker.replace('.', '_')}_annual_report.pdf"
     
+    # Cache hit: If we already downloaded it, do not burn a search token
     if pdf_path.exists():
         return str(pdf_path)
+
+    try:
+        query = f"{company_or_ticker} annual report filetype:pdf"
+        results = search_web_news(query=query, depth="basic", max_results=3)
+        
+        pdf_url = None
+        for r in results:
+            if r.get("url", "").endswith(".pdf"):
+                pdf_url = r["url"]
+                break
+                
+        if not pdf_url:
+            raise ValueError(f"Could not find an annual report PDF for {company_or_ticker}")
+            
+    except Exception as e:
+        # If the search budget is exhausted or query fails, return a graceful fallback
+        # so the agent doesn't crash the entire session.
+        return f"No PDF found (Search Limit Exceeded or Error: {e})"
         
     logger.info(f"Downloading annual report from {pdf_url} to {pdf_path}")
     with httpx.Client(follow_redirects=True, timeout=30) as client:
