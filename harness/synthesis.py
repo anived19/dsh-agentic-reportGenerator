@@ -594,7 +594,13 @@ def run_chief_editor(
             )
 
     score_context_block = ""
-    if score_results:
+    if market_metrics.custom_metrics and market_metrics.custom_metrics.get("credit_scoring_unavailable"):
+        score_context_block = (
+            "\n\nCREDIT SCORING RESULTS:\n"
+            "MANDATORY RULE: Credit scoring could not be fully completed for this entity due to unavailable or un-parsable source data (e.g., missing annual report).\n"
+            "If a 'Credit Scoring Summary' subsection is included, you MUST explicitly state that the scoring was unavailable and do NOT invent any scores."
+        )
+    elif score_results:
         avg_score = compute_average_score(score_results)
         score_context_block = f"\n\nCREDIT SCORING RESULTS (Average Score: {avg_score:.1f}/100):\n"
         for res in score_results:

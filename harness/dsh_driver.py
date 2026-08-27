@@ -178,20 +178,19 @@ def run_dsh_orchestrator(
         )
     task_prompt += (
         f"   [MANDATORY CREDIT SCORING]\n"
-        f"   Before finalizing the report, you MUST spawn 4 subagents using `tool-subagent-fork` to analyze the following categories:\n"
+        f"   Before finalizing the report, you MUST spawn 4 subagents using `tool-subagent-scoring` to analyze the following categories:\n"
         f"   1. Finances\n"
         f"   2. Business & Management\n"
         f"   3. Hygiene\n"
         f"   4. Banking\n"
-        f"   CRITICAL: You must pass `tools: []` to the subagent payload to strictly isolate them.\n"
         f"   To prepare the data for the subagents, you MUST FIRST:\n"
         f"     A) Call mcp__finoscale__fetch_annual_report(company_or_ticker=...) to download the PDF.\n"
+        f"        NOTE: If fetch_annual_report returns `not_found`, record this fact and proceed directly to validate_data/finalize_report without getting stuck. Do not attempt to spawn subagents if the PDF is missing.\n"
         f"     B) Call mcp__finoscale__parse_report_text(pdf_path=...) and mcp__finoscale__build_section_index() to prepare the category bounds.\n"
         f"   Then, for EACH category, perform exactly these steps in order:\n"
         f"     A) Call mcp__finoscale__get_category_text(category=...) to lock the category and get the bounded text.\n"
-        f"     B) Call tool-subagent-fork to spawn the subagent. You MUST pass `tools: [\"mcp__finoscale__submit_category_result\"]` in the payload. Its prompt must include the bounded text and instruct the subagent to evaluate it and invoke submit_category_result.\n"
-        f"     C) Wait for the subagent to finish and submit the result.\n"
-        f"     D) Call tool-subagent-control to explicitly terminate/clear the subagent.\n"
+        f"     B) Call tool-subagent-scoring to spawn the subagent and pass the bounded text. Instruct the subagent to evaluate it and invoke submit_category_result.\n"
+        f"     C) Wait for the subagent to finish and submit the result. (The subagent will auto-terminate after execution).\n"
         f"   After all 4 categories are completed, call mcp__finoscale__submit_for_analyst_review and wait for human response.\n"
     )
     task_prompt += (

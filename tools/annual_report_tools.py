@@ -22,11 +22,11 @@ except ImportError:
 logger = logging.getLogger("annual_report_tools")
 
 @retry_on_transient_error(max_attempts=3)
-def fetch_annual_report(company_or_ticker: str) -> str:
+def fetch_annual_report(company_or_ticker: str) -> dict:
     """
     Downloads the annual report PDF for the given company into the session's isolated temporary directory.
     Uses Tavily search to find the PDF URL if not cached.
-    Returns the absolute path to the downloaded PDF.
+    Returns a dict with 'status' ("success" or "not_found") and 'pdf_path' or 'reason'.
     """
     from tools.search_tools import search_web_news
     import httpx
@@ -39,7 +39,7 @@ def fetch_annual_report(company_or_ticker: str) -> str:
     
     # Cache hit: If we already downloaded it, do not burn a search token
     if pdf_path.exists():
-        return str(pdf_path)
+        return {"status": "success", "pdf_path": str(pdf_path)}
 
     try:
         query = f"{company_or_ticker} annual report filetype:pdf"
@@ -52,20 +52,23 @@ def fetch_annual_report(company_or_ticker: str) -> str:
                 break
                 
         if not pdf_url:
-            raise ValueError(f"Could not find an annual report PDF for {company_or_ticker}")
+            return {"status": "not_found", "reason": f"Could not find an annual report PDF for {company_or_ticker}"}
             
     except Exception as e:
         # If the search budget is exhausted or query fails, return a graceful fallback
         # so the agent doesn't crash the entire session.
-        return f"No PDF found (Search Limit Exceeded or Error: {e})"
+        return {"status": "not_found", "reason": f"Search Limit Exceeded or Error: {e}"}
         
     logger.info(f"Downloading annual report from {pdf_url} to {pdf_path}")
-    with httpx.Client(follow_redirects=True, timeout=30) as client:
-        resp = client.get(pdf_url)
-        resp.raise_for_status()
-        pdf_path.write_bytes(resp.content)
+    try:
+        with httpx.Client(follow_redirects=True, timeout=30) as client:
+            resp = client.get(pdf_url)
+            resp.raise_for_status()
+            pdf_path.write_bytes(resp.content)
+    except Exception as e:
+        return {"status": "not_found", "reason": f"Failed to download PDF from {pdf_url}: {e}"}
         
-    return str(pdf_path)
+    return {"status": "success", "pdf_path": str(pdf_path)}
 
 
 def parse_report_text(pdf_path: str) -> list[dict]:

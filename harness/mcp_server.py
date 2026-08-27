@@ -698,6 +698,18 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         except Exception:
             pass
 
+    IDEMPOTENT_TOOLS = {
+        "get_price_snapshot",
+        "get_fundamentals",
+        "get_quarterly_financials",
+        "get_technicals",
+        "get_ownership",
+        "get_valuation_multiples"
+    }
+
+    if name in IDEMPOTENT_TOOLS:
+        if name in state.completed_tools:
+            return {"status": "success", "cached": True, "message": "Data already fetched in a previous turn and stored in state."}
 
     if name == "resolve_entity":
         # Short-circuit: prevent LLM from overriding a resolved ticker
@@ -884,6 +896,7 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         state.market_data.update(res)
         if not state.company_name and res.get("company_name"):
             state.company_name = res["company_name"]
+        state.completed_tools.append(name)
         session_mgr.checkpoint()
         return res
 
@@ -895,6 +908,7 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         session_mgr.category_attempts["valuation_multiples"] += 1
         res = get_valuation_multiples(ticker)
         state.market_data.update(res)
+        state.completed_tools.append(name)
         session_mgr.checkpoint()
         return res
 
@@ -906,6 +920,7 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         session_mgr.category_attempts["fundamentals"] += 1
         res = get_fundamentals(ticker)
         state.market_data.update(res)
+        state.completed_tools.append(name)
         session_mgr.checkpoint()
         return res
 
@@ -917,6 +932,7 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         session_mgr.category_attempts["quarterly_financials"] += 1
         res = get_quarterly_financials(ticker)
         state.market_data["quarterly_financials"] = res
+        state.completed_tools.append(name)
         session_mgr.checkpoint()
         return {"quarterly_datapoints_count": len(res), "data": res}
 
@@ -928,6 +944,7 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         session_mgr.category_attempts["technicals"] += 1
         res = get_technicals(ticker)
         state.market_data.update(res)
+        state.completed_tools.append(name)
         session_mgr.checkpoint()
         return res
 
@@ -939,6 +956,7 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         session_mgr.category_attempts["ownership"] += 1
         res = get_ownership(ticker)
         state.market_data.update(res)
+        state.completed_tools.append(name)
         session_mgr.checkpoint()
         return res
 
@@ -1270,11 +1288,14 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
 
         required_categories = {"Finances", "Business & Management", "Hygiene", "Banking"}
         completed_categories = {res.score_category.value for res in state.score_results}
+        
+        if not state.credit_scoring_attempted:
+            return {"error": "FATAL: Credit scoring was not attempted. You must run fetch_annual_report first to check for an annual report."}
+
         if not required_categories.issubset(completed_categories):
             missing = required_categories - completed_categories
-            return {
-                "error": f"FATAL: Credit scoring incomplete. You must run tool-subagent-scoring for the following missing categories: {missing}"
-            }
+            state.custom_metrics["credit_scoring_unavailable"] = True
+            logger.warning(f"Credit scoring incomplete. Missing categories: {missing}. Proceeding with finalized report because scoring was attempted.")
 
         if state.ticker and (state.ticker.endswith(".NS") or state.ticker.endswith(".BO")):
             required_tools = {"scrape_moneycontrol", "get_ownership", "compare_source_data"}
@@ -1322,7 +1343,10 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
 
     elif name == "fetch_annual_report":
         from tools.annual_report_tools import fetch_annual_report
-        return {"pdf_path": fetch_annual_report(arguments["company_or_ticker"])}
+        res = fetch_annual_report(arguments["company_or_ticker"])
+        state.credit_scoring_attempted = True
+        session_mgr.checkpoint()
+        return res
     elif name == "parse_report_text":
         from tools.annual_report_tools import parse_report_text
         pages = parse_report_text(arguments["pdf_path"])

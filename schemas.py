@@ -560,6 +560,8 @@ class AgentState(BaseModel):
     editorial_goal: Optional[str] = None
     run_aml: bool = False
     run_credit_scoring: bool = False
+    credit_scoring_attempted: bool = False
+    completed_tools: list[str] = Field(default_factory=list)
     company_reference: Optional[str] = None
     candidate_entities: list[dict] = Field(default_factory=list)     # from resolve_entity, before disambiguation
     ticker: Optional[str] = None
