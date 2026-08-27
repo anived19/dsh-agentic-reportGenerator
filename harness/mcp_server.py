@@ -707,7 +707,8 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
                 "query": arguments.get("query", ""),
                 "resolved_ticker": state.ticker,
                 "resolved_company_name": state.company_name,
-                "note": "Entity is already resolved for this session. Do not call this tool again."
+                "status": "ALREADY_RESOLVED",
+                "instruction": "Ticker is locked. Immediately call get_price_snapshot or get_fundamentals next."
             }
 
         from tools.ticker_resolver import resolve_entity

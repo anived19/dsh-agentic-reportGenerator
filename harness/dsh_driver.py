@@ -324,9 +324,14 @@ def run_dsh_orchestrator(
 
     # 6. Reconstruct AgentState from Empirical DSH Data
     state_status = AgentStatus(session_payload.get("status", "running"))
-    if state_status != AgentStatus.DONE and proc.returncode != 0:
+    
+    # Verify that the session actually finalized properly
+    finalized = any(t.get("tool_name") == "finalize_report" and t.get("ok") for t in session_payload.get("tool_log", []))
+    
+    if not finalized or session_payload.get("status") != "done":
         raise RuntimeError(
-            f"DSH session did not complete with finalize_report() (status: {state_status.value}, exit: {proc.returncode})"
+            f"DSH session {session_id} exited prematurely at turn {session_payload.get('turn')} "
+            f"without calling finalize_report. Halting synthesis to prevent empty PDF generation."
         )
 
     market_data = session_payload.get("market_data", {})
