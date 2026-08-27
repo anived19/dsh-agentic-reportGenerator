@@ -38,3 +38,23 @@ When the main agent reaches the Analyst Review phase (if credit scoring is run),
 ## Subagent Lock Limitations
 
 To avoid severe rate limits and context window bloat, the subagents for credit scoring (Finances, Business & Management, Hygiene, Banking) are enforced to run strictly sequentially. The MCP server provides explicit mutex lock methods (`mcp__finoscale__get_category_text` and `mcp__finoscale__submit_category_result`) to manage this.
+
+## Testing the Fallback Scoring Path
+
+To deterministically test the subagent credit scoring path without relying on a successful annual report download (which can fail due to search engine limitations or missing files), you can force the fallback data dossier to generate by setting an environment variable:
+
+```bash
+set FORCE_ANNUAL_REPORT_NOT_FOUND=1
+python -m harness.dsh_driver --ticker TCS.NS --report-type equity
+```
+
+This will automatically short-circuit `fetch_annual_report`, trigger `build_fallback_dossier` during the `build_section_index` step, and spawn all 4 subagents sequentially using live session data (market, sentiment, AML) instead of PDF excerpts. Verify the final session telemetry to ensure `credit_scoring_source` is set to `fallback_market_data`.
+
+## Clean-Context Verification Canary
+
+To verify that context isolation works correctly and subagents are not leaking instructions or past state from the main orchestrator loop, you can run a canary test:
+
+1. Enable the context debug hook by setting the environment variable DSH_SUBAGENT_CONTEXT_DEBUG=1.
+2. Run the agent. During the session, inject a unique marker string (e.g., CANARY_MARKER_12345) into the agent's memory (for example, by having it fetch a mocked web page, or by editing the orchestrator prompt).
+3. Check the written debug files (subagent_context_<Category>.json) generated during execution.
+4. If the marker string appears in the context JSON, then context isolation is broken. If it does not appear, then clean-context spawning is successfully preventing prompt leakage.

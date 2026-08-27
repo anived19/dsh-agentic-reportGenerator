@@ -148,7 +148,7 @@
       5. CRO SELF-AUDIT & FINALIZATION: Call audit_draft to verify numbers against
       ground-truth data, then call plan_report_format, validate_data, and finalize_report.
 
-      6. SUBAGENT CREDIT SCORING (IF REQUIRED): For annual reports, you MUST spawn subagents sequentially (1-by-1) to score Finances, Business & Management, Hygiene, and Banking.
+      6. SUBAGENT CREDIT SCORING (MANDATORY — ALWAYS RUN, WITH OR WITHOUT AN ANNUAL REPORT): Call fetch_annual_report, then call build_section_index() regardless of its result — it transparently falls back to your already-gathered market/compliance/sentiment data if no report PDF exists. Then spawn subagents sequentially for all 4 categories exactly as below. This step is never optional and is never skipped due to a missing filing.
       - Step A: Call mcp__finoscale__get_category_text(category) to acquire the lock and get bounded text.
       - Step B: Use tool-subagent-scoring to spawn a subagent and pass the bounded text. Instruct it to evaluate the text and invoke submit_category_result.
       - Step C: Wait for the subagent's result.

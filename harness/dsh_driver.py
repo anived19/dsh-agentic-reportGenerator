@@ -185,13 +185,16 @@ def run_dsh_orchestrator(
         f"   4. Banking\n"
         f"   To prepare the data for the subagents, you MUST FIRST:\n"
         f"     A) Call mcp__finoscale__fetch_annual_report(company_or_ticker=...) to download the PDF.\n"
-        f"        NOTE: If fetch_annual_report returns `not_found`, record this fact and proceed directly to validate_data/finalize_report without getting stuck. Do not attempt to spawn subagents if the PDF is missing.\n"
-        f"     B) Call mcp__finoscale__parse_report_text(pdf_path=...) and mcp__finoscale__build_section_index() to prepare the category bounds.\n"
+        f"     B) IF it succeeded, call mcp__finoscale__parse_report_text(pdf_path=...)\n"
+        f"     C) In BOTH cases (success or failure), unconditionally call mcp__finoscale__build_section_index(). It automatically prepares category text from the parsed annual report or falls back to your already-gathered market/AML/sentiment data.\n"
         f"   Then, for EACH category, perform exactly these steps in order:\n"
         f"     A) Call mcp__finoscale__get_category_text(category=...) to lock the category and get the bounded text.\n"
-        f"     B) Call tool-subagent-scoring to spawn the subagent and pass the bounded text. Instruct the subagent to evaluate it and invoke submit_category_result.\n"
+        f"        - It now returns a dictionary: `{{\"text\": \"...\", \"source\": \"annual_report\" | \"fallback_market_data\" | \"none\"}}`.\n"
+        f"        - If `source` is `\"none\"` (e.g. Banking for non-banks), DO NOT spawn the subagent. Consider the category skipped and proceed to the next.\n"
+        f"     B) Call tool-subagent-scoring to spawn the subagent and pass the `text` and `source`. Instruct the subagent to evaluate it and invoke submit_category_result.\n"
+        f"        - CRITICAL CITATION RULE: Instruct the subagent that if the source is `fallback_market_data` rather than an annual report, it MUST cite the originating tool/field (e.g. \"get_ownership: promoter_holding_pct\") instead of a page number in `page_citation`.\n"
         f"     C) Wait for the subagent to finish and submit the result. (The subagent will auto-terminate after execution).\n"
-        f"   After all 4 categories are completed, call mcp__finoscale__submit_for_analyst_review and wait for human response.\n"
+        f"   After all applicable categories are completed, call mcp__finoscale__submit_for_analyst_review and wait for human response.\n"
     )
     task_prompt += (
         f"   [TOOL DEDUPLICATION RULE]\n"
@@ -370,6 +373,18 @@ def run_dsh_orchestrator(
         except Exception:
             pass
 
+    # Reconstruct ScoreCategoryResults
+    from schemas import ScoreCategoryResult
+    score_results = []
+    if session_payload.get("score_results"):
+        try:
+            score_results = [
+                ScoreCategoryResult.model_validate(r)
+                for r in session_payload.get("score_results", [])
+            ]
+        except Exception:
+            pass
+
     # Reconstruct ToolLog & Telemetry
     tool_log = [ToolCallRecord.model_validate(t) for t in session_payload.get("tool_log", [])]
     telemetry = RunTelemetry.model_validate(session_payload.get("telemetry", {}))
@@ -424,12 +439,19 @@ def run_dsh_orchestrator(
         report_spec=report_spec,
         editorial_goal=state.editorial_goal,
         aml_result=aml_result if run_aml else None,
+        score_results=score_results,
     )
     telemetry.gemini_calls += 1
 
     if run_aml and aml_result:
         aml_md = render_aml_markdown(aml_result)
         markdown_body = markdown_body + "\n\n" + aml_md
+        
+    if score_results:
+        from harness.synthesis import render_credit_scoring_markdown
+        score_md = render_credit_scoring_markdown(score_results)
+        if score_md:
+            markdown_body = markdown_body + "\n\n" + score_md
 
     # 9. KPI Cards Assembly
     kpi_cards: list[dict[str, str]] = []

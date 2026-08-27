@@ -542,7 +542,7 @@ def _check_and_scrub_numeric_drift(markdown_body: str, market_metrics: MarketMet
 def compute_average_score(score_results: list) -> float:
     if not score_results:
         return 0.0
-    return sum(r.score for r in score_results) / len(score_results)
+    return sum(r.score_value for r in score_results) / len(score_results)
 
 
 def run_chief_editor(
@@ -739,3 +739,25 @@ def render_aml_markdown(aml_result: AMLScreeningResult) -> str:
     return "\n".join(lines)
 
 
+
+
+def render_credit_scoring_markdown(score_results: list) -> str:
+    """
+    Deterministic (no-LLM) Markdown table for the 4-pillar credit scoring scorecard.
+    Renders whatever categories are present — does not require all 4.
+    """
+    if not score_results:
+        return ""
+    lines = ["## Credit Scoring & Governance Scorecard", "", "| Category | Score | Verdict |", "|---|---|---|"]
+    for r in score_results:
+        comfort = r.comforts[0].claim if r.comforts else ""
+        discomfort = r.discomforts[0].claim if r.discomforts else ""
+        verdict = comfort or discomfort or (r.raw_evidence_snippets[:150] if r.raw_evidence_snippets else "")
+        lines.append(f"| {r.score_category.value} | {r.score_value:.0f}/100 | {verdict} |")
+    avg = sum(r.score_value for r in score_results) / len(score_results)
+    lines.append("")
+    lines.append(f"**Average score: {avg:.1f}/100** across {len(score_results)} of 4 pillars evaluated.")
+    if len(score_results) < 4:
+        missing = {"Finances", "Business & Management", "Hygiene", "Banking"} - {r.score_category.value for r in score_results}
+        lines.append(f"*Not scored this run: {', '.join(sorted(missing))}.*")
+    return "\n".join(lines)

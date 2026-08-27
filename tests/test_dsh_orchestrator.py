@@ -9,6 +9,8 @@ Verifies the Acceptance Criteria:
 """
 from __future__ import annotations
 
+import os
+os.environ["DSH_TELEMETRY_DISABLED"] = "1"
 import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch

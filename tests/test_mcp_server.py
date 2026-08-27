@@ -91,6 +91,7 @@ async def test_dispatch_validate_data_and_finalize_gating():
     session_mgr.state.ticker = None
     session_mgr.state.market_data = {}  # Empty
     session_mgr.category_attempts = {k: 0 for k in session_mgr.category_attempts}
+    session_mgr.state.credit_scoring_attempted = True
 
     # 1. Validation should fail (missing price_snapshot, valuation_multiples, fundamentals)
     val_res = await _dispatch_tool("validate_data", {})
@@ -125,6 +126,8 @@ async def test_dispatch_validate_data_and_finalize_gating():
 
     # 4. Now finalize_report should succeed
     fin_res2 = await _dispatch_tool("finalize_report", {})
+    import pprint
+    print("\nFIN_RES2:", fin_res2)
     assert fin_res2["status"] == "finalized"
     assert session_mgr.state.status == AgentStatus.DONE
     assert Path(fin_res2["final_payload_path"]).exists()
@@ -299,6 +302,8 @@ async def test_disambiguation_state_gate_and_lifecycle_reset(tmp_path, monkeypat
     from harness.mcp_server import _dispatch_tool, session_mgr
     from schemas import AgentStatus
 
+    session_mgr.state.completed_tools = []
+    
     # Mock time.sleep to simulate human injecting the response after 1 loop
     async def fake_sleep(dur):
         resp_file = session_mgr.session_dir / "ask_user_response.json"
@@ -465,6 +470,7 @@ async def test_ticker_precedence_after_resolution(monkeypatch):
     session_mgr.state.ticker = "RESOLVED.NS"
     session_mgr.state.company_name = "Resolved Company"
     session_mgr.state.status = AgentStatus.RUNNING
+    session_mgr.state.completed_tools = []
     
     # 2. Call a downstream data tool with a *different* ticker in arguments
     with patch("tools.finance_tools.get_price_snapshot") as mock_price:
@@ -541,3 +547,67 @@ def test_tool_subagent_scoring_config():
         
         tool_filter = cfg.get("toolFilter", {})
         assert "mcp__finoscale__submit_category_result" in tool_filter.get("allow", [])
+
+
+@pytest.mark.asyncio
+async def test_get_category_text_fallback_without_annual_report():
+    """Verify fallback dossier generation when no annual report is found."""
+    from harness.mcp_server import _dispatch_tool, session_mgr
+    
+    session_mgr.active_subagent_category = None
+    session_mgr.parsed_pages = []
+    session_mgr.state.company_name = "Test Fallback Corp"
+    session_mgr.state.market_data = {"pe_ratio": 15.0}
+    session_mgr.fallback_dossier = {}
+    
+    # 1. build_section_index triggers fallback dossier generation
+    res1 = await _dispatch_tool("build_section_index", {})
+    assert res1.get("status") == "success"
+    assert "Finances" in session_mgr.fallback_dossier
+    
+    # 2. get_category_text retrieves fallback data
+    res2 = await _dispatch_tool("get_category_text", {"category": "Finances"})
+    assert res2.get("source") == "fallback_market_data"
+    assert "pe_ratio: 15.0" in res2.get("text", "")
+    assert session_mgr.active_subagent_category == "Finances"
+    
+    # 3. submit_category_result unlocks
+    res3 = await _dispatch_tool("submit_category_result", {
+        "category": "Finances",
+        "result": {
+            "score_category": "Finances",
+            "score_value": 75,
+            "raw_evidence_snippets": "Looks good",
+            "page_citations": []
+        }
+    })
+    assert res3.get("status") == "success"
+    assert session_mgr.active_subagent_category is None
+
+
+@pytest.mark.asyncio
+async def test_checkpoint_score_results(tmp_path):
+    """Verify that score_results array round-trips correctly through checkpoint()."""
+    from harness.mcp_server import SessionStateManager
+    from schemas import AgentState, ScoreCategoryResult, ScoreCategory
+    
+    mgr = SessionStateManager()
+    mgr.session_dir = tmp_path
+    
+    mgr.state.score_results = [
+        ScoreCategoryResult(score_category=ScoreCategory.FINANCES, score_value=85, raw_evidence_snippets="good", page_citations=[]),
+        ScoreCategoryResult(score_category=ScoreCategory.BUSINESS_MANAGEMENT, score_value=90, raw_evidence_snippets="great", page_citations=[])
+    ]
+    
+    mgr.checkpoint()
+    state_file = mgr.session_dir / "session_state.json"
+    
+    import json
+    data = json.loads(state_file.read_text(encoding="utf-8"))
+    
+    assert "score_results" in data
+    assert len(data["score_results"]) == 2
+    assert data["score_results"][0]["score_category"] == "Finances"
+    assert data["score_results"][0]["score_value"] == 85
+    assert data["score_results"][1]["score_category"] == "Business & Management"
+    assert data["score_results"][1]["score_value"] == 90

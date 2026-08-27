@@ -474,6 +474,7 @@ class PageCitedClaim(BaseModel):
 class ScoreCategoryResult(BaseModel):
     score_category: ScoreCategory
     score_value: float
+    source: str = Field(default="annual_report", description="The data source used for this score (annual_report or aggregated_session_data)")
     comforts: list[PageCitedClaim] = Field(default_factory=list)
     discomforts: list[PageCitedClaim] = Field(default_factory=list)
     raw_evidence_snippets: str

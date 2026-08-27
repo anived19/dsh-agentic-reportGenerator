@@ -10,10 +10,10 @@ the lifetime of the DSH run and persists snapshots to cache/sessions/{session_id
 """
 from __future__ import annotations
 
+import os
 import asyncio
 import json
 import logging
-import os
 import re
 import sys
 import time
@@ -86,6 +86,7 @@ class SessionStateManager:
         self.active_subagent_category: Optional[str] = None
         self.bounded_index: dict[str, list[int]] = {}
         self.parsed_pages: list[dict] = []
+        self.fallback_dossier: dict[str, str] = {}
 
         # Load orchestrator config profiles for validation
         self.config_profiles = self._load_orchestrator_config()
@@ -219,7 +220,8 @@ class SessionStateManager:
                 "aml_result": self.state.aml_result.model_dump() if self.state.aml_result else None,
                 "validation_result": self.validation_result.model_dump() if hasattr(self, "validation_result") and self.validation_result else None,
                 "tool_log": [t.model_dump() for t in self.state.tool_log],
-                "category_attempts": self.category_attempts,
+                "score_results": [r.model_dump() for r in self.state.score_results],
+                "analyst_review_status": self.state.analyst_review_status.value,
                 "tool_call_summary": {
                     "total_calls": len(self.state.tool_log),
                     "unique_tools": list(set(t.tool_name for t in self.state.tool_log)),
@@ -685,7 +687,6 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
     analyst_response_file = session_mgr.session_dir / "analyst_review_response.json"
     if analyst_response_file.exists():
         try:
-            import os
             from schemas import AnalystReviewStatus
             data = json.loads(analyst_response_file.read_text(encoding="utf-8"))
             if "status" in data:
@@ -1285,17 +1286,26 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         # Verify analyst review if scores were requested
         if state.score_results and state.analyst_review_status != AnalystReviewStatus.APPROVED:
             return {"error": "Cannot finalize report: Analyst Review is pending or rejected. You must call submit_for_analyst_review and wait for APPROVED status."}
-
-        required_categories = {"Finances", "Business & Management", "Hygiene", "Banking"}
+        
+        # Final validation logic
+        from schemas import ScoreCategoryResult
+        
+        required_categories = {"Finances", "Business & Management", "Hygiene"}
+        if state.sector_metrics and state.sector_metrics.sector.strip().lower() == "banking":
+            required_categories.add("Banking")
+            
         completed_categories = {res.score_category.value for res in state.score_results}
         
         if not state.credit_scoring_attempted:
             return {"error": "FATAL: Credit scoring was not attempted. You must run fetch_annual_report first to check for an annual report."}
 
         if not required_categories.issubset(completed_categories):
+            if len(state.score_results) < 3:
+                return {"error": "FATAL: You MUST score at least Finances, Business & Management, and Hygiene using get_category_text's fallback data, even if the PDF is missing!"}
+                
             missing = required_categories - completed_categories
             state.custom_metrics["credit_scoring_unavailable"] = True
-            logger.warning(f"Credit scoring incomplete. Missing categories: {missing}. Proceeding with finalized report because scoring was attempted.")
+            logger.warning(f"Credit scoring incomplete. Missing categories: {missing}. Proceeding with finalized report because minimum 3 fallback categories are met.")
 
         if state.ticker and (state.ticker.endswith(".NS") or state.ticker.endswith(".BO")):
             required_tools = {"scrape_moneycontrol", "get_ownership", "compare_source_data"}
@@ -1331,6 +1341,7 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
                         state.market_data["revenue_ttm_formatted"] = f"Rs. {mc_ttm/10000000:,.2f} Cr (Reconciled from Moneycontrol)"
                         logger.info(f"Reconciliation: Overwrote yfinance revenue_ttm with Moneycontrol figure (variance {variance:.2%})")
 
+        state.custom_metrics["credit_scoring_source"] = "annual_report" if session_mgr.parsed_pages else "fallback_market_data"
         state.status = AgentStatus.DONE
         final_path = session_mgr.dump_final_session()
         return {
@@ -1361,10 +1372,15 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
                     p["text"] = r["text"]
         return {"status": "success", "ocr_pages": len(results)}
     elif name == "build_section_index":
-        from tools.annual_report_tools import build_section_index
-        index = build_section_index(session_mgr.parsed_pages)
-        session_mgr.bounded_index = index
-        return index
+        if not session_mgr.parsed_pages:
+            from tools.annual_report_tools import build_fallback_dossier
+            session_mgr.fallback_dossier = build_fallback_dossier(state)
+            return {"status": "success", "message": "Fallback dossier generated"}
+        else:
+            from tools.annual_report_tools import build_section_index
+            index = build_section_index(session_mgr.parsed_pages)
+            session_mgr.bounded_index = index
+            return index
     elif name == "get_promoter_holding":
         from tools.moneycontrol_tools import get_promoter_holding
         query_or_ticker = state.company_name or state.ticker or arguments.get("query_or_ticker")
@@ -1414,12 +1430,33 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         if session_mgr.active_subagent_category is not None:
             return {"error": f"ERROR: Subagent for {session_mgr.active_subagent_category} is already active. You MUST use submit_category_result to unlock it before spawning the next."}
         session_mgr.active_subagent_category = category
-        p_nums = session_mgr.bounded_index.get(category, [])
-        cat_text = ""
-        for p_num in p_nums:
-            page_text = next((p["text"] for p in session_mgr.parsed_pages if p["page_num"] == p_num), "")
-            cat_text += f"\n--- PAGE {p_num} ---\n{page_text}"
-        return {"text": cat_text}
+
+        if session_mgr.parsed_pages:
+            p_nums = session_mgr.bounded_index.get(category, [])
+            cat_text = ""
+            for p_num in p_nums:
+                page_text = next((p["text"] for p in session_mgr.parsed_pages if p["page_num"] == p_num), "")
+                cat_text += f"\n--- PAGE {p_num} ---\n{page_text}"
+            source = "annual_report"
+        else:
+            cat_text = session_mgr.fallback_dossier.get(category, "")
+            source = "fallback_market_data"
+
+        if not cat_text.strip():
+            cat_text = (
+                f"No annual-report or fallback data was available for {category}. "
+                f"Score conservatively (score_value near 0.5) and state the data gap "
+                f"explicitly in raw_evidence_snippets."
+            )
+            
+        if os.environ.get("DSH_SUBAGENT_CONTEXT_DEBUG") == "1":
+            try:
+                debug_file = session_mgr.session_dir / f"subagent_context_{category.replace(' ', '_')}.json"
+                debug_file.write_text(json.dumps({"text": cat_text, "source": source}, indent=2), encoding="utf-8")
+            except Exception as e:
+                logger.warning("Failed to write subagent context debug file: %s", e)
+                
+        return {"text": cat_text, "source": source}
     elif name == "submit_category_result":
         category = arguments["category"]
         if session_mgr.active_subagent_category != category:
