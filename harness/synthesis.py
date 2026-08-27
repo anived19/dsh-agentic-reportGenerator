@@ -361,6 +361,7 @@ _SECTION_INSTRUCTION_MAP = {
     "scenario_outlook":        _instr_scenario_outlook,
     "peer_benchmarking":       _instr_peer_benchmarking,
     "sector_kpis":             _instr_sector_kpis,
+    "credit_scoring":          _instr_credit_scoring,
 }
 
 

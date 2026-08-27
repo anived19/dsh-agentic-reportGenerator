@@ -11,6 +11,7 @@ from tavily import TavilyClient
 
 from config import settings
 from utils.retry import retry_on_transient_error
+from tools.rate_limits import tavily_budget
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,10 @@ def search_web_news(
     Search the live web for news/sentiment relevant to `query`.
     `depth` may be 'basic' (1 credit) or 'advanced' (2 credits).
     """
+    if not tavily_budget.increment():
+        logger.warning("Tavily search budget exhausted. No additional queries permitted.")
+        return []
+
     max_results = max(1, min(max_results, 10))
     search_depth = "advanced" if depth.lower() == "advanced" else "basic"
 

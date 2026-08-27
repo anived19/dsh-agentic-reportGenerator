@@ -677,7 +677,7 @@ _state_lock = asyncio.Lock()
 async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
     """Execute a tool, update state, and return structured result."""
     # Rate-limit: keep under 15 RPM for Gemini free-tier quota
-    time.sleep(4)
+    await asyncio.sleep(4.5)
     state = session_mgr.state
     state.turn += 1
 
@@ -740,7 +740,7 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
                         selected = resp_data.get("selected", "")
                         if selected: break
                     except Exception: pass
-                time.sleep(0.2)
+                await asyncio.sleep(0.2)
                 wait_seconds += 0.2
                 
             if pending_file.exists(): pending_file.unlink()
@@ -810,7 +810,7 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
                         break
                 except Exception:
                     pass
-            time.sleep(0.2)
+            await asyncio.sleep(0.2)
             wait_seconds += 0.2
 
         # Clean up IPC files
@@ -1063,11 +1063,7 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         ticker = state.ticker or ""
         depth = arguments.get("depth", "basic")
 
-        if state.telemetry.tavily_calls >= state.telemetry.tavily_calls_budget:
-            return {"warning": "Tavily search budget exhausted (5/5). No additional queries permitted."}
-
         session_mgr.category_attempts["news_searches"] += 1
-        state.telemetry.tavily_calls += 1
         res = search_web_news(query=query, ticker=ticker, depth=depth)
 
         session_mgr.search_queries_used.append(query)
@@ -1124,10 +1120,6 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         focus = arguments.get("focus", "")
         depth = arguments.get("depth", "basic")
 
-        if state.telemetry.tavily_calls >= state.telemetry.tavily_calls_budget:
-            return {"warning": "Tavily search budget exhausted (5/5)."}
-
-        state.telemetry.tavily_calls += 1
         res = search_adverse_media(entity_name=entity_name, focus=focus, depth=depth)
         session_mgr.checkpoint()
         return res
@@ -1281,7 +1273,7 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         if not required_categories.issubset(completed_categories):
             missing = required_categories - completed_categories
             return {
-                "error": f"FATAL: Credit scoring incomplete. You must run tool-subagent-fork for the following missing categories: {missing}"
+                "error": f"FATAL: Credit scoring incomplete. You must run tool-subagent-scoring for the following missing categories: {missing}"
             }
 
         if state.ticker and (state.ticker.endswith(".NS") or state.ticker.endswith(".BO")):
@@ -1297,7 +1289,7 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
                 return {"error": "Missing compare_source_data execution. This is mandatory for Indian equities."}
 
             last_args = comparison_calls[-1].arguments
-            mc_data = last_args.get("moneycontrol_data", {})
+            mc_data = state.market_data.get("moneycontrol_data", {})
             yf_data = last_args.get("yfinance_data", {})
 
             # Force the agent to actually pass populated data
@@ -1388,7 +1380,7 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
                         return {"error": f"Analyst REJECTED the draft. Feedback: {resp.get('feedback')}. Fix this before resubmitting."}
                 except json.JSONDecodeError:
                     pass
-            time.sleep(0.5)  # Use synchronous sleep like in ask_user
+            await asyncio.sleep(0.5)  # Use asyncio.sleep instead of time.sleep
             wait_seconds += 0.5
 
         # If the loop exits without a response:

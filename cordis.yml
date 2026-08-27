@@ -150,7 +150,7 @@
 
       6. SUBAGENT CREDIT SCORING (IF REQUIRED): For annual reports, you MUST spawn subagents sequentially (1-by-1) to score Finances, Business & Management, Hygiene, and Banking.
       - Step A: Call mcp__finoscale__get_category_text(category) to acquire the lock and get bounded text.
-      - Step B: Use tool-subagent-fork to spawn a subagent, passing `tools: ["mcp__finoscale__submit_category_result"]` and the bounded text. Instruct it to evaluate the text and invoke submit_category_result.
+      - Step B: Use tool-subagent-scoring to spawn a subagent, passing `tools: ["mcp__finoscale__submit_category_result"]` and the bounded text. Instruct it to evaluate the text and invoke submit_category_result.
       - Step C: Wait for the subagent's result.
       - Step D: Verify the category lock is released.
       - Step E: CRITICAL: You MUST use tool-subagent-control to explicitly terminate/clear the subagent before moving to the next category.
@@ -181,7 +181,15 @@
 - id: tool-subagent
   disabled: false
 - id: tool-subagent-fork
-  disabled: false
+  disabled: true
+- id: tool-subagent-scoring
+  name: '@deepseek-ai/dsh-tool-subagent'
+  config:
+    provider: spawn
+    backgroundMode: one-shot
+    toolFilter:
+      allow:
+        - mcp__finoscale__submit_category_result
 - id: tool-subagent-report
   disabled: false
 - id: tool-subagent-control

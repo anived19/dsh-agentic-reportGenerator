@@ -59,42 +59,46 @@ def test_tool_definitions_registry():
         assert tool_def["inputSchema"]["type"] == "object"
 
 
-def test_dispatch_resolve_entity():
+@pytest.mark.asyncio
+async def test_dispatch_resolve_entity():
     """Test dispatch to resolve_entity and candidate storage."""
     session_mgr.state.ticker = None
     session_mgr.state.company_name = None
-    result = _dispatch_tool("resolve_entity", {"query": "TCS.NS"})
+    result = await _dispatch_tool("resolve_entity", {"query": "TCS.NS"})
     assert isinstance(result, dict)
     assert result.get("resolved_ticker") == "TCS.NS"
     assert session_mgr.state.ticker == "TCS.NS"
 
 
-def test_dispatch_data_accumulation():
+@pytest.mark.asyncio
+async def test_dispatch_data_accumulation():
     """Test that data tools accumulate findings into session_mgr.state.market_data."""
     session_mgr.state.market_data = {}
     
-    res_price = _dispatch_tool("get_price_snapshot", {"ticker": "TCS.NS"})
+    res_price = await _dispatch_tool("get_price_snapshot", {"ticker": "TCS.NS"})
     assert "current_price" in res_price
     assert "current_price" in session_mgr.state.market_data
 
-    res_val = _dispatch_tool("get_valuation_multiples", {"ticker": "TCS.NS"})
+    res_val = await _dispatch_tool("get_valuation_multiples", {"ticker": "TCS.NS"})
     assert "pe_ratio" in res_val
     assert "pe_ratio" in session_mgr.state.market_data
 
 
-def test_dispatch_validate_data_and_finalize_gating():
+@pytest.mark.asyncio
+async def test_dispatch_validate_data_and_finalize_gating():
     """Test validation gating: finalize_report is refused when data requirements are missing."""
     session_mgr.state.report_type = ReportType.VALUATION
+    session_mgr.state.ticker = None
     session_mgr.state.market_data = {}  # Empty
     session_mgr.category_attempts = {k: 0 for k in session_mgr.category_attempts}
 
     # 1. Validation should fail (missing price_snapshot, valuation_multiples, fundamentals)
-    val_res = _dispatch_tool("validate_data", {})
+    val_res = await _dispatch_tool("validate_data", {})
     assert val_res["satisfied"] is False
     assert "price_snapshot" in val_res["missing"]
 
     # 2. finalize_report should refuse
-    fin_res = _dispatch_tool("finalize_report", {})
+    fin_res = await _dispatch_tool("finalize_report", {})
     assert "error" in fin_res
     assert "Cannot finalize report" in fin_res["error"]
     assert session_mgr.state.status != AgentStatus.DONE
@@ -106,20 +110,31 @@ def test_dispatch_validate_data_and_finalize_gating():
         "eps_ttm": 140.0,
     }
     session_mgr.category_attempts["news_searches"] = 2
+    
+    from schemas import ScoreCategoryResult, ScoreCategory, AnalystReviewStatus
+    session_mgr.state.score_results = [
+        ScoreCategoryResult(score_category=ScoreCategory.FINANCES, score_value=80, raw_evidence_snippets="", page_citations=[]),
+        ScoreCategoryResult(score_category=ScoreCategory.BUSINESS_MANAGEMENT, score_value=80, raw_evidence_snippets="", page_citations=[]),
+        ScoreCategoryResult(score_category=ScoreCategory.HYGIENE, score_value=80, raw_evidence_snippets="", page_citations=[]),
+        ScoreCategoryResult(score_category=ScoreCategory.BANKING, score_value=80, raw_evidence_snippets="", page_citations=[]),
+    ]
+    session_mgr.state.analyst_review_status = AnalystReviewStatus.APPROVED
 
-    val_res2 = _dispatch_tool("validate_data", {})
+    val_res2 = await _dispatch_tool("validate_data", {})
     assert val_res2["satisfied"] is True
 
     # 4. Now finalize_report should succeed
-    fin_res2 = _dispatch_tool("finalize_report", {})
+    fin_res2 = await _dispatch_tool("finalize_report", {})
     assert fin_res2["status"] == "finalized"
     assert session_mgr.state.status == AgentStatus.DONE
     assert Path(fin_res2["final_payload_path"]).exists()
 
 
-def test_dispatch_reflect_and_plan_report_format():
+@pytest.mark.asyncio
+async def test_dispatch_reflect_and_plan_report_format():
     """Test reflect_on_progress and plan_report_format."""
-    ref_res = _dispatch_tool(
+    session_mgr.state.score_results = []
+    ref_res = await _dispatch_tool(
         "reflect_on_progress",
         {
             "gathered_summary": "All multiples collected",
@@ -130,7 +145,7 @@ def test_dispatch_reflect_and_plan_report_format():
     assert ref_res["status"] == "checkpoint_recorded"
     assert any(t.tool_name == "reflect_on_progress" for t in session_mgr.state.tool_log)
 
-    plan_res = _dispatch_tool(
+    plan_res = await _dispatch_tool(
         "plan_report_format",
         {
             "rationale": "Focus on valuation & multiples",
@@ -145,10 +160,11 @@ def test_dispatch_reflect_and_plan_report_format():
     assert len(session_mgr.state.report_spec.sections) == 2
 
 
-def test_dispatch_unknown_tool():
+@pytest.mark.asyncio
+async def test_dispatch_unknown_tool():
     """Test dispatching an unknown tool raises ValueError."""
     with pytest.raises(ValueError, match="Unknown MCP tool: non_existent_tool"):
-        _dispatch_tool("non_existent_tool", {})
+        await _dispatch_tool("non_existent_tool", {})
 
 
 def test_mcp_async_list_tools():
@@ -193,7 +209,8 @@ def test_mcp_async_call_tool_error_handling():
     assert "error" in data
 
 
-def test_aml_sweep_dispatch_produces_valid_state(monkeypatch):
+@pytest.mark.asyncio
+async def test_aml_sweep_dispatch_produces_valid_state(monkeypatch):
     """Regression test: run_structured_aml_sweep's list[dict] return shape
     must round-trip through _dispatch_tool without crashing, and state.aml_result
     must be a valid AMLScreeningResult with entities_screened."""
@@ -216,7 +233,7 @@ def test_aml_sweep_dispatch_produces_valid_state(monkeypatch):
     session_mgr.state.company_name = None
     session_mgr.state.ticker = None
 
-    result = _dispatch_tool("run_structured_aml_sweep", {"entity_name": "Test Corp", "ticker": "TEST.NS"})
+    result = await _dispatch_tool("run_structured_aml_sweep", {"entity_name": "Test Corp", "ticker": "TEST.NS"})
     assert isinstance(result, list)
     assert session_mgr.state.aml_result is not None
     assert "Test Corp" in session_mgr.state.aml_result.entities_screened
@@ -257,7 +274,8 @@ def test_session_state_hydration_on_restart(tmp_path, monkeypatch):
     assert len(mgr.state.tool_log) == 1
 
 
-def test_validate_data_explicitly_reports_missing_news_searches():
+@pytest.mark.asyncio
+async def test_validate_data_explicitly_reports_missing_news_searches():
     """Verify validate_data includes news_searches in missing list when min_news_searches is not met."""
     session_mgr.state.report_type = ReportType.GENERAL
     session_mgr.state.market_data = {
@@ -266,13 +284,14 @@ def test_validate_data_explicitly_reports_missing_news_searches():
     session_mgr.category_attempts["price_snapshot"] = 1
     session_mgr.category_attempts["news_searches"] = 0
 
-    val_res = _dispatch_tool("validate_data", {})
+    val_res = await _dispatch_tool("validate_data", {})
     assert val_res["satisfied"] is False
     assert any("news_searches" in item for item in val_res["missing"])
     assert "news_searches" in val_res["notes"]
 
 
-def test_disambiguation_state_gate_and_lifecycle_reset(tmp_path, monkeypatch):
+@pytest.mark.asyncio
+async def test_disambiguation_state_gate_and_lifecycle_reset(tmp_path, monkeypatch):
     """
     Verify that resolve_entity blocks synchronously when multiple candidates are found,
     reads the human input from IPC, and resolves the ticker without AWAITING_USER state.
@@ -281,14 +300,14 @@ def test_disambiguation_state_gate_and_lifecycle_reset(tmp_path, monkeypatch):
     from schemas import AgentStatus
 
     # Mock time.sleep to simulate human injecting the response after 1 loop
-    def fake_sleep(dur):
+    async def fake_sleep(dur):
         resp_file = session_mgr.session_dir / "ask_user_response.json"
         resp_file.write_text(json.dumps({"selected": "2"}), encoding="utf-8")
 
-    monkeypatch.setattr("time.sleep", fake_sleep)
+    monkeypatch.setattr("asyncio.sleep", fake_sleep)
     
     # 1. Resolve entity with multiple candidates (tata)
-    res = _dispatch_tool("resolve_entity", {"query": "tata"})
+    res = await _dispatch_tool("resolve_entity", {"query": "tata"})
     
     # It should have blocked, read the "2", and resolved to Tata Motors Passenger Vehicles (TMPV.NS)
     # Wait, the index of TMPV.NS is usually 1 (0-indexed, so 2nd option). Let's check what it resolves to.
@@ -299,11 +318,12 @@ def test_disambiguation_state_gate_and_lifecycle_reset(tmp_path, monkeypatch):
     # 4. Data fetching is now unlocked
     with patch("tools.finance_tools.get_price_snapshot") as mock_price:
         mock_price.return_value = {"current_price": 750.0, "currency": "INR"}
-        price_res = _dispatch_tool("get_price_snapshot", {})
+        price_res = await _dispatch_tool("get_price_snapshot", {})
         assert price_res.get("current_price") == 750.0
 
 
-def test_new_sector_peer_cro_tools_dispatch():
+@pytest.mark.asyncio
+async def test_new_sector_peer_cro_tools_dispatch():
     """Verify dispatching and state updates for sector, peer, anomaly, and audit tools."""
     from harness.mcp_server import _dispatch_tool, session_mgr
 
@@ -313,7 +333,7 @@ def test_new_sector_peer_cro_tools_dispatch():
     # 1. Sector tool dispatch
     with patch("tools.finance_tools.compute_banking_metrics") as mock_bank:
         mock_bank.return_value = {"ticker": "JPM", "nim_pct": 2.5, "efficiency_ratio_pct": 55.0}
-        res = _dispatch_tool("compute_banking_metrics", {"ticker": "JPM"})
+        res = await _dispatch_tool("compute_banking_metrics", {"ticker": "JPM"})
         assert res["nim_pct"] == 2.5
         assert session_mgr.state.sector_metrics is not None
         assert session_mgr.state.sector_metrics.banking.nim_pct == 2.5
@@ -331,7 +351,7 @@ def test_new_sector_peer_cro_tools_dispatch():
             ],
             "industry_summary": "2 peers",
         }
-        res = _dispatch_tool("get_peer_tickers", {"ticker": "JPM", "max_peers": 2})
+        res = await _dispatch_tool("get_peer_tickers", {"ticker": "JPM", "max_peers": 2})
         assert res["peers_count"] == 2
         assert session_mgr.state.peer_benchmarks is not None
         assert len(session_mgr.state.peer_benchmarks.peers) == 2
@@ -355,7 +375,7 @@ def test_new_sector_peer_cro_tools_dispatch():
             ],
             "summary": "1 finding",
         }
-        res = _dispatch_tool("investigate_financial_anomaly", {"ticker": "JPM", "anomaly_type": "QoQ Profit Drop"})
+        res = await _dispatch_tool("investigate_financial_anomaly", {"ticker": "JPM", "anomaly_type": "QoQ Profit Drop"})
         assert res["findings_count"] == 1
         assert len(session_mgr.state.anomaly_findings) >= 1
         assert session_mgr.state.anomaly_findings[-1].metric_impacted == "Net Income"
@@ -369,13 +389,14 @@ def test_new_sector_peer_cro_tools_dispatch():
             "discrepancies": [],
             "cro_verdict": "PASSED",
         }
-        res = _dispatch_tool("audit_draft", {"draft_summary": "Test draft summary"})
+        res = await _dispatch_tool("audit_draft", {"draft_summary": "Test draft summary"})
         assert res["audit_passed"] is True
         assert session_mgr.state.cro_audit_report is not None
         assert session_mgr.state.cro_audit_report.audit_passed is True
 
 
-def test_bug_a_analyst_review_status_hydration():
+@pytest.mark.asyncio
+async def test_bug_a_analyst_review_status_hydration():
     """Bug A: verify that _dispatch_tool reads analyst_review_response.json and hydrates status."""
     from harness.mcp_server import _dispatch_tool, session_mgr
     from schemas import AnalystReviewStatus
@@ -389,13 +410,14 @@ def test_bug_a_analyst_review_status_hydration():
     resp_file.write_text(json.dumps({"status": "approved"}), encoding="utf-8")
     
     # Call a harmless tool to trigger the hydration
-    _dispatch_tool("resolve_entity", {"query": "TCS"})
+    await _dispatch_tool("resolve_entity", {"query": "TCS"})
     
     assert session_mgr.state.analyst_review_status == AnalystReviewStatus.APPROVED
     assert not resp_file.exists()  # Should be renamed to .processed
 
 
-def test_bug_b_get_category_text_lock():
+@pytest.mark.asyncio
+async def test_bug_b_get_category_text_lock():
     """Bug B & Priority 2: verify get_category_text acquires a lock and prevents concurrent subagents."""
     from harness.mcp_server import _dispatch_tool, session_mgr
     
@@ -405,19 +427,19 @@ def test_bug_b_get_category_text_lock():
     session_mgr.parsed_pages = [{"page_num": 1, "text": "Page 1"}]
     
     # Acquire lock for Finances
-    res1 = _dispatch_tool("get_category_text", {"category": "Finances"})
+    res1 = await _dispatch_tool("get_category_text", {"category": "Finances"})
     assert "error" not in res1
     assert "Page 1" in res1["text"]
     assert session_mgr.active_subagent_category == "Finances"
     
     # Try to acquire lock for Hygiene while Finances is active
-    res2 = _dispatch_tool("get_category_text", {"category": "Hygiene"})
+    res2 = await _dispatch_tool("get_category_text", {"category": "Hygiene"})
     assert "error" in res2
     assert "is already active" in res2["error"]
     assert session_mgr.active_subagent_category == "Finances"
     
     # Release lock
-    res3 = _dispatch_tool("submit_category_result", {
+    res3 = await _dispatch_tool("submit_category_result", {
         "category": "Finances", 
         "result": {
             "score_category": "Finances", 
@@ -430,7 +452,8 @@ def test_bug_b_get_category_text_lock():
     assert session_mgr.active_subagent_category is None
 
 
-def test_ticker_precedence_after_resolution(monkeypatch):
+@pytest.mark.asyncio
+async def test_ticker_precedence_after_resolution(monkeypatch):
     """
     Regression test: verify that once state.ticker is resolved, it takes precedence
     over any LLM-supplied ticker argument in downstream tools.
@@ -448,14 +471,15 @@ def test_ticker_precedence_after_resolution(monkeypatch):
         mock_price.return_value = {"current_price": 100.0, "currency": "INR"}
         
         # The LLM supplies "WRONG.NS" as an argument
-        res = _dispatch_tool("get_price_snapshot", {"ticker": "WRONG.NS"})
+        res = await _dispatch_tool("get_price_snapshot", {"ticker": "WRONG.NS"})
         
         # 3. Assert the handler actually used the resolved state.ticker ("RESOLVED.NS")
         mock_price.assert_called_once_with("RESOLVED.NS")
         assert res.get("current_price") == 100.0
 
 
-def test_redundant_ask_user_does_not_corrupt_resolved_ticker(tmp_path, monkeypatch):
+@pytest.mark.asyncio
+async def test_redundant_ask_user_does_not_corrupt_resolved_ticker(tmp_path, monkeypatch):
     """
     Regression test: verify that a redundant call to ask_user (e.g. from an outdated LLM prompt)
     does not overwrite a ticker that was already correctly resolved by resolve_entity.
@@ -465,14 +489,14 @@ def test_redundant_ask_user_does_not_corrupt_resolved_ticker(tmp_path, monkeypat
     import json
 
     # 1. Mock time.sleep to simulate human injecting the response for resolve_entity
-    def fake_sleep(dur):
+    async def fake_sleep(dur):
         resp_file = session_mgr.session_dir / "ask_user_response.json"
         resp_file.write_text(json.dumps({"selected": "2"}), encoding="utf-8")
 
-    monkeypatch.setattr("time.sleep", fake_sleep)
+    monkeypatch.setattr("asyncio.sleep", fake_sleep)
     
     # 2. Call resolve_entity with a query that produces multiple candidates
-    _dispatch_tool("resolve_entity", {"query": "tata"})
+    await _dispatch_tool("resolve_entity", {"query": "tata"})
     
     # Verify the initial resolution was successful
     assert session_mgr.state.ticker is not None
@@ -481,7 +505,7 @@ def test_redundant_ask_user_does_not_corrupt_resolved_ticker(tmp_path, monkeypat
     initial_resolved_ticker = session_mgr.state.ticker
     
     # 3. Simulate the LLM making a redundant call to ask_user with arbitrary hallucinated options
-    ask_user_res = _dispatch_tool("ask_user", {
+    ask_user_res = await _dispatch_tool("ask_user", {
         "question": "Which one did you mean?",
         "options": ["Some Other Company (WRONG.NS)"]
     })
@@ -490,3 +514,30 @@ def test_redundant_ask_user_does_not_corrupt_resolved_ticker(tmp_path, monkeypat
     assert session_mgr.state.ticker == initial_resolved_ticker
     assert ask_user_res.get("resolved_ticker") == initial_resolved_ticker
 
+
+
+def test_section_instruction_map_credit_scoring():
+    """Verify credit_scoring is correctly mapped in synthesis.py."""
+    from harness.synthesis import _SECTION_INSTRUCTION_MAP, _instr_credit_scoring
+    assert "credit_scoring" in _SECTION_INSTRUCTION_MAP
+    assert _SECTION_INSTRUCTION_MAP["credit_scoring"] == _instr_credit_scoring
+
+def test_tool_subagent_scoring_config():
+    """Smoke test for toolFilter config of tool-subagent-scoring."""
+    import yaml
+    from pathlib import Path
+    
+    cordis_path = Path("cordis.yml")
+    if cordis_path.exists():
+        with open(cordis_path, encoding="utf-8") as f:
+            plugins = yaml.safe_load(f)
+            
+        scoring_plugin = next((p for p in plugins if p.get("id") == "tool-subagent-scoring"), None)
+        assert scoring_plugin is not None, "tool-subagent-scoring missing from cordis.yml"
+        
+        cfg = scoring_plugin.get("config", {})
+        assert cfg.get("backgroundMode") == "one-shot"
+        assert cfg.get("provider") == "spawn"
+        
+        tool_filter = cfg.get("toolFilter", {})
+        assert "mcp__finoscale__submit_category_result" in tool_filter.get("allow", [])
