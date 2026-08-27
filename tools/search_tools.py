@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 _client = TavilyClient(api_key=settings.tavily_api_key)
 
 
-@retry_on_transient_error(max_attempts=3)
 def search_web_news(
     query: str,
     ticker: str = "",
@@ -32,6 +31,16 @@ def search_web_news(
     if not tavily_budget.increment():
         logger.warning("Tavily search budget exhausted. No additional queries permitted.")
         return []
+
+    return _search_web_news_core(query, ticker, depth, max_results)
+
+@retry_on_transient_error(max_attempts=3)
+def _search_web_news_core(
+    query: str,
+    ticker: str = "",
+    depth: str = "basic",
+    max_results: int = 5,
+) -> list[dict]:
 
     max_results = max(1, min(max_results, 10))
     search_depth = "advanced" if depth.lower() == "advanced" else "basic"
@@ -65,7 +74,6 @@ def search_web_news(
     return results
 
 
-@retry_on_transient_error(max_attempts=3)
 def investigate_financial_anomaly(
     company_name: str,
     ticker: str,

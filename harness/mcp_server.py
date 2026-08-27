@@ -1306,8 +1306,8 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
                 variance = abs(yf_ttm - mc_ttm) / max(yf_ttm, mc_ttm)
                 if variance > 0.10:
                     if state.market_data:
-                        state.market_data.revenue_ttm = mc_ttm
-                        state.market_data.revenue_ttm_formatted = f"Rs. {mc_ttm/10000000:,.2f} Cr (Reconciled from Moneycontrol)"
+                        state.market_data["revenue_ttm"] = mc_ttm
+                        state.market_data["revenue_ttm_formatted"] = f"Rs. {mc_ttm/10000000:,.2f} Cr (Reconciled from Moneycontrol)"
                         logger.info(f"Reconciliation: Overwrote yfinance revenue_ttm with Moneycontrol figure (variance {variance:.2%})")
 
         state.status = AgentStatus.DONE
