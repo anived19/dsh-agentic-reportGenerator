@@ -197,6 +197,7 @@ def run_dsh_orchestrator(
     task_prompt += (
         f"   [TOOL DEDUPLICATION RULE]\n"
         f"   Do not re-invoke financial snapshot or resolution tools (e.g., get_price_snapshot, get_fundamentals, get_technicals, resolve_entity) if they have already succeeded in the current session.\n"
+    )
     task_prompt += (
         f"5. Call mcp__finoscale__audit_draft to cross-check numbers against empirical data.\n"
         f"6. Call mcp__finoscale__reflect_on_progress to summarize gathered data.\n"
