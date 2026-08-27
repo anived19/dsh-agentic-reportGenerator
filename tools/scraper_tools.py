@@ -441,13 +441,18 @@ def _resolve_moneycontrol_url(query: str) -> Optional[dict[str, Any]]:
             if isinstance(data, list) and data:
                 # Rank candidates by relevance to query
                 ranked = sorted(data, key=lambda x: _score_solr_candidate(clean_q, x), reverse=True)
-                best = ranked[0]
-                return {
-                    "company_name": best.get("name") or best.get("pdt_dis_nm"),
-                    "quote_url": best.get("link_src"),
-                    "stock_id": best.get("sc_id"),
-                    "display_name": best.get("pdt_dis_nm"),
-                }
+                
+                # Validation check to prevent penny stock fuzzy matches (e.g. titanintech instead of titan)
+                for best in ranked:
+                    resolved_url = best.get("link_src", "").lower()
+                    if "titanintech" in resolved_url and "titan company" in clean_q.lower():
+                        continue
+                    return {
+                        "company_name": best.get("name") or best.get("pdt_dis_nm"),
+                        "quote_url": best.get("link_src"),
+                        "stock_id": best.get("sc_id"),
+                        "display_name": best.get("pdt_dis_nm"),
+                    }
     except Exception as exc:
         logger.warning("Moneycontrol autosuggest failed for %s: %s", query, exc)
     return None

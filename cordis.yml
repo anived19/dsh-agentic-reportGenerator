@@ -154,7 +154,7 @@
 
       7. ANALYST REVIEW: If credit scoring was performed, you MUST call mcp__finoscale__submit_for_analyst_review and wait for the human response to be injected. Do not call finalize_report until approved.
 
-      8. CROSS-CHECKING INDIAN EQUITIES: For Indian equities (.NS/.BO), you MUST call both mcp__finoscale__scrape_moneycontrol AND mcp__finoscale__get_promoter_holding. Merge their outputs and pass them alongside yfinance_data to mcp__finoscale__compare_source_data. If sources disagree, follow the tie-breaking rule: Moneycontrol is the source of truth for regulatory disclosures (promoter holding), while yfinance is the source of truth for standard global market data (market cap). If material mismatch is flagged, feed it into mcp__finoscale__investigate_financial_anomaly.
+      8. CROSS-CHECKING INDIAN EQUITIES: For Indian equities (.NS/.BO), you MUST call both mcp__finoscale__scrape_moneycontrol AND mcp__finoscale__get_ownership. Look for "promoter holdings" within the get_ownership output. Merge their outputs and pass them alongside yfinance_data to mcp__finoscale__compare_source_data. If sources disagree, follow the tie-breaking rule: Moneycontrol is the source of truth for regulatory disclosures (promoter holding), while yfinance is the source of truth for standard global market data (market cap). If material mismatch is flagged, feed it into mcp__finoscale__investigate_financial_anomaly.
 
     rules:
       - name: "Entity Disambiguation"

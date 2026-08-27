@@ -128,6 +128,12 @@ class MarketMetrics(BaseModel):
     fifty_day_ma_formatted: Optional[str] = None
     two_hundred_day_ma: Optional[float] = None
     two_hundred_day_ma_formatted: Optional[str] = None
+    twenty_day_avg_delivery_pct: Optional[float] = None
+    twenty_day_avg_delivery_pct_formatted: Optional[str] = None
+    vwap: Optional[float] = None
+    vwap_formatted: Optional[str] = None
+    beta: Optional[float] = None
+    beta_formatted: Optional[str] = None
 
     # --- Extended technicals (computed from price history) ---
     rsi_14: Optional[float] = None                 # 14-day RSI
@@ -546,6 +552,7 @@ class AgentState(BaseModel):
     report_type: ReportType = ReportType.GENERAL
     editorial_goal: Optional[str] = None
     run_aml: bool = False
+    run_credit_scoring: bool = False
     company_reference: Optional[str] = None
     candidate_entities: list[dict] = Field(default_factory=list)     # from resolve_entity, before disambiguation
     ticker: Optional[str] = None
@@ -582,6 +589,7 @@ class FinalReport(BaseModel):
     market_metrics: MarketMetrics
     sentiment_findings: SentimentFindings
     aml_result: Optional[AMLScreeningResult] = None  # populated only when --aml flag is set
+    run_credit_scoring: bool = False
     report_spec: Optional[ReportSpec] = None
     score_results: list[ScoreCategoryResult] = Field(default_factory=list)
     telemetry: Optional[RunTelemetry] = None

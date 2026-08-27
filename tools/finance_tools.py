@@ -935,6 +935,44 @@ def assemble_market_metrics(ticker: str, data: dict[str, Any]) -> MarketMetrics:
     if not quarterly:
         unavailable.append("quarterly_financials")
 
+    # Robustly parse Moneycontrol metrics if available
+    mc_data = data.get("moneycontrol_data", {})
+    
+    delivery_raw = data.get("twenty_day_avg_delivery_pct") or mc_data.get("20d_avg_delivery_pct")
+    delivery_pct = None
+    if delivery_raw:
+        try:
+            delivery_pct = _to_pct(delivery_raw)
+        except Exception:
+            pass
+
+    vwap_raw = data.get("vwap") or mc_data.get("vwap")
+    vwap = None
+    if vwap_raw:
+        try:
+            if isinstance(vwap_raw, str):
+                # Handle cases like "1,234.56"
+                vwap_str = vwap_raw.replace(",", "").strip()
+                if vwap_str:
+                    vwap = round(float(vwap_str), 2)
+            else:
+                vwap = round(float(vwap_raw), 2)
+        except Exception:
+            pass
+
+    beta_raw = data.get("beta") or mc_data.get("beta")
+    beta = None
+    if beta_raw:
+        try:
+            if isinstance(beta_raw, str):
+                beta_str = beta_raw.replace(",", "").strip()
+                if beta_str:
+                    beta = round(float(beta_str), 2)
+            else:
+                beta = round(float(beta_raw), 2)
+        except Exception:
+            pass
+
     return MarketMetrics(
         ticker=ticker,
         company_name=data.get("company_name"),
@@ -954,6 +992,12 @@ def assemble_market_metrics(ticker: str, data: dict[str, Any]) -> MarketMetrics:
         fifty_day_ma_formatted=data.get("fifty_day_ma_formatted") or format_number_amount(data.get("fifty_day_ma")),
         two_hundred_day_ma=data.get("two_hundred_day_ma"),
         two_hundred_day_ma_formatted=data.get("two_hundred_day_ma_formatted") or format_number_amount(data.get("two_hundred_day_ma")),
+        twenty_day_avg_delivery_pct=delivery_pct,
+        twenty_day_avg_delivery_pct_formatted=format_percent(delivery_pct, is_pct_points=True) if delivery_pct is not None else None,
+        vwap=vwap,
+        vwap_formatted=format_number_amount(vwap) if vwap is not None else None,
+        beta=beta,
+        beta_formatted=format_number_amount(beta) if beta is not None else None,
         rsi_14=data.get("rsi_14"),
         macd_line=data.get("macd_line"),
         macd_signal=data.get("macd_signal"),

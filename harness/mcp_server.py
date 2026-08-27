@@ -17,6 +17,7 @@ import os
 import re
 import sys
 import time
+import threading
 from datetime import date
 from pathlib import Path
 from typing import Any, Optional
@@ -219,6 +220,11 @@ class SessionStateManager:
                 "validation_result": self.validation_result.model_dump() if hasattr(self, "validation_result") and self.validation_result else None,
                 "tool_log": [t.model_dump() for t in self.state.tool_log],
                 "category_attempts": self.category_attempts,
+                "tool_call_summary": {
+                    "total_calls": len(self.state.tool_log),
+                    "unique_tools": list(set(t.tool_name for t in self.state.tool_log)),
+                    "error_count": sum(1 for t in self.state.tool_log if not t.ok),
+                }
             }
             state_file.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
         except Exception as exc:
@@ -666,7 +672,9 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
 # Tool Execution & Dispatching Logic
 # ---------------------------------------------------------------------------
 
-def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
+_state_lock = asyncio.Lock()
+
+async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
     """Execute a tool, update state, and return structured result."""
     # Rate-limit: keep under 15 RPM for Gemini free-tier quota
     time.sleep(4)
@@ -1137,11 +1145,13 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
 
     elif name == "scrape_moneycontrol":
         from tools.scraper_tools import scrape_moneycontrol
-        query_or_ticker = state.ticker or state.company_name
+        query_or_ticker = state.company_name or state.ticker
         fields = arguments.get("fields")
         section = arguments.get("section", "overview")
         use_browser = arguments.get("use_browser", False)
         res = scrape_moneycontrol(query_or_ticker=query_or_ticker, fields=fields, section=section, use_browser=use_browser)
+        if "overview_metrics" in res:
+            state.market_data["moneycontrol_data"] = res["overview_metrics"]
         session_mgr.checkpoint()
         return res
 
@@ -1242,7 +1252,7 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         # Verify validation
         if not session_mgr.validation_result or not session_mgr.validation_result.satisfied:
             # Auto-validate once to check
-            val_dict = _dispatch_tool("validate_data", {})
+            val_dict = await _dispatch_tool("validate_data", {})
             if not val_dict.get("satisfied"):
                 return {
                     "error": "Cannot finalize report: required data validation unsatisfied.",
@@ -1252,6 +1262,36 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         # Verify analyst review if scores were requested
         if state.score_results and state.analyst_review_status != AnalystReviewStatus.APPROVED:
             return {"error": "Cannot finalize report: Analyst Review is pending or rejected. You must call submit_for_analyst_review and wait for APPROVED status."}
+
+        required_categories = {"Finances", "Business & Management", "Hygiene", "Banking"}
+        completed_categories = {res.score_category.value for res in state.score_results}
+        if not required_categories.issubset(completed_categories):
+            missing = required_categories - completed_categories
+            return {
+                "error": f"FATAL: Credit scoring incomplete. You must run tool-subagent-fork for the following missing categories: {missing}"
+            }
+
+        if state.ticker and (state.ticker.endswith(".NS") or state.ticker.endswith(".BO")):
+            required_tools = {"scrape_moneycontrol", "get_ownership", "compare_source_data"}
+            successful_tools = {t.tool_name for t in state.tool_log if t.ok}
+            missing = required_tools - successful_tools
+            if missing:
+                return {"error": f"Cannot finalize report: Indian equities require successful execution of {', '.join(missing)}."}
+
+            # Enforce payload contents of compare_source_data
+            comparison_calls = [call for call in state.tool_log if call.tool_name == "compare_source_data" and call.ok]
+            if not comparison_calls:
+                return {"error": "Missing compare_source_data execution. This is mandatory for Indian equities."}
+
+            last_args = comparison_calls[-1].arguments
+            mc_data = last_args.get("moneycontrol_data", {})
+            yf_data = last_args.get("yfinance_data", {})
+
+            # Force the agent to actually pass populated data
+            if not mc_data or not yf_data:
+                return {
+                    "error": "compare_source_data was executed with empty dictionaries. You must successfully extract data via scrape_moneycontrol and get_price_snapshot/get_fundamentals first."
+                }
 
         state.status = AgentStatus.DONE
         final_path = session_mgr.dump_final_session()
@@ -1321,9 +1361,11 @@ def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         from schemas import ScoreCategoryResult
         try:
             result = ScoreCategoryResult.model_validate(arguments["result"])
-            state.score_results.append(result)
+            async with _state_lock:
+                state.score_results.append(result)
         except Exception as e:
-            return {"error": f"Invalid ScoreCategoryResult format: {e}"}
+            # Explicit lock check requirement
+            return {"error": f"Invalid ScoreCategoryResult format: {e}. Note: Lock for {category} is still retained until a valid result is submitted."}
         session_mgr.active_subagent_category = None
         session_mgr.checkpoint()
         return {"status": "success", "message": f"{category} result stored. You may now terminate this subagent and spawn the next."}
@@ -1504,7 +1546,7 @@ async def call_tool(name: str, arguments: dict[str, Any] | None) -> list[TextCon
     )
 
     try:
-        result = _dispatch_tool(name, arguments)
+        result = await _dispatch_tool(name, arguments)
         rec.result_summary = str(result)[:200]
         session_mgr.state.tool_log.append(rec)
         session_mgr.checkpoint()

@@ -177,6 +177,24 @@ def run_dsh_orchestrator(
             f"   - mcp__finoscale__search_adverse_media\n"
         )
     task_prompt += (
+        f"   [MANDATORY CREDIT SCORING]\n"
+        f"   Before finalizing the report, you MUST spawn 4 subagents using `tool-subagent-fork` to analyze the following categories:\n"
+        f"   1. Finances\n"
+        f"   2. Business & Management\n"
+        f"   3. Hygiene\n"
+        f"   4. Banking\n"
+        f"   CRITICAL: You must pass `tools: []` to the subagent payload to strictly isolate them.\n"
+        f"   To prepare the data for the subagents, you MUST FIRST:\n"
+        f"     A) Call mcp__finoscale__fetch_annual_report(company_or_ticker=...) to download the PDF.\n"
+        f"     B) Call mcp__finoscale__parse_report_text(pdf_path=...) and mcp__finoscale__build_section_index() to prepare the category bounds.\n"
+        f"   Then, for EACH category, perform exactly these steps in order:\n"
+        f"     A) Call mcp__finoscale__get_category_text(category=...) to lock the category and get the bounded text.\n"
+        f"     B) Call tool-subagent-fork to spawn the subagent. Its prompt should tell it to score the category based on the text.\n"
+        f"     C) Call mcp__finoscale__submit_category_result(category=..., result=...) to unlock and store the score.\n"
+        f"     D) Call tool-subagent-control to explicitly terminate/clear the subagent.\n"
+        f"   After all 4 categories are completed, call mcp__finoscale__submit_for_analyst_review and wait for human response.\n"
+    )
+    task_prompt += (
         f"5. Call mcp__finoscale__audit_draft to cross-check numbers against empirical data.\n"
         f"6. Call mcp__finoscale__reflect_on_progress to summarize gathered data.\n"
         f"7. Call mcp__finoscale__validate_data. Verify requirements are satisfied.\n"
