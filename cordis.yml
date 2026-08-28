@@ -149,8 +149,9 @@
       ground-truth data, then call plan_report_format, validate_data, and finalize_report.
 
       6. SUBAGENT CREDIT SCORING (MANDATORY — ALWAYS RUN, WITH OR WITHOUT AN ANNUAL REPORT): Call fetch_annual_report, then call build_section_index() regardless of its result — it transparently falls back to your already-gathered market/compliance/sentiment data if no report PDF exists. Then spawn subagents sequentially for all 4 categories exactly as below. This step is never optional and is never skipped due to a missing filing.
-      - Step A: Call mcp__finoscale__get_category_text(category) to acquire the lock and get bounded text.
-      - Step B: Use tool-subagent-scoring to spawn a subagent and pass the bounded text. Instruct it to evaluate the text and invoke submit_category_result.
+      CRITICAL: The ONLY valid category strings are exactly: "Finances", "Business & Management", "Hygiene", "Banking". Do NOT paraphrase, rename, abbreviate, or invent category names — any other string is rejected immediately.
+      - Step A: Call mcp__finoscale__get_category_text(category="Finances") — use the exact string.
+      - Step B: Use tool-subagent-scoring to spawn a subagent and pass the bounded text. Instruct it to evaluate the text and invoke submit_category_result with the SAME exact category string.
       - Step C: Wait for the subagent's result.
 
       7. ANALYST REVIEW: If credit scoring was performed, you MUST call mcp__finoscale__submit_for_analyst_review and wait for the human response to be injected. Do not call finalize_report until approved.

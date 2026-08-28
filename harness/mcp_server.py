@@ -676,18 +676,46 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
 
 _state_lock = asyncio.Lock()
 
+# Canonical category names for credit scoring — validated at the gate
+from schemas import ScoreCategory
+_VALID_CATEGORIES = {c.value for c in ScoreCategory}
+
+
+# ---------------------------------------------------------------------------
+# Adaptive sliding-window rate limiter (replaces static asyncio.sleep)
+# ---------------------------------------------------------------------------
+class _RateLimiter:
+    """Sliding-window rate limiter: only sleeps when genuinely near the ceiling."""
+
+    def __init__(self, max_calls: int = 13, window_seconds: float = 60.0):
+        from collections import deque
+        self._timestamps: deque[float] = deque()
+        self._max_calls = max_calls
+        self._window = window_seconds
+
+    async def acquire(self):
+        now = time.monotonic()
+        # Purge expired timestamps outside the sliding window
+        while self._timestamps and now - self._timestamps[0] > self._window:
+            self._timestamps.popleft()
+        if len(self._timestamps) >= self._max_calls:
+            sleep_for = self._window - (now - self._timestamps[0]) + 0.5
+            logger.info("Rate limiter: sleeping %.1fs to stay under %d calls/min", sleep_for, self._max_calls)
+            await asyncio.sleep(sleep_for)
+            # Purge again after sleep
+            now = time.monotonic()
+            while self._timestamps and now - self._timestamps[0] > self._window:
+                self._timestamps.popleft()
+        self._timestamps.append(time.monotonic())
+
+
+_rate_limiter = _RateLimiter(max_calls=13, window_seconds=60.0)
+
+
 async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
     """Execute a tool, update state, and return structured result."""
-    # Rate-limit: keep under 15 RPM for Gemini free-tier quota
-    # Subagents use 2-3 requests very quickly, so we enforce heavy throttling around their boundaries
-    if name == "get_category_text":
-        logger.info("Throttling for 12.0s before subagent spawn to preserve Gemini 15 RPM quota...")
-        await asyncio.sleep(12.0)
-    elif name == "submit_category_result":
-        logger.info("Throttling for 8.0s after subagent to rebuild Gemini quota bucket...")
-        await asyncio.sleep(8.0)
-    else:
-        await asyncio.sleep(6.0)
+    # Adaptive rate-limit: only sleeps when approaching 15 RPM ceiling
+    await _rate_limiter.acquire()
     state = session_mgr.state
     state.turn += 1
 
@@ -1435,6 +1463,12 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         return {"error": "TIMEOUT: Analyst did not respond. You MUST call submit_for_analyst_review again."}
     elif name == "get_category_text":
         category = arguments["category"]
+        # Gate: reject invented category names BEFORE spending any LLM calls
+        if category not in _VALID_CATEGORIES:
+            return {
+                "error": f"INVALID CATEGORY '{category}'. You MUST use exactly one of: "
+                         f"{sorted(_VALID_CATEGORIES)}. Do not invent, paraphrase, or rename categories."
+            }
         if session_mgr.active_subagent_category is not None:
             return {"error": f"ERROR: Subagent for {session_mgr.active_subagent_category} is already active. You MUST use submit_category_result to unlock it before spawning the next."}
         session_mgr.active_subagent_category = category
@@ -1467,6 +1501,12 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         return {"text": cat_text, "source": source}
     elif name == "submit_category_result":
         category = arguments["category"]
+        # Gate: reject invented category names
+        if category not in _VALID_CATEGORIES:
+            return {
+                "error": f"INVALID CATEGORY '{category}'. You MUST use exactly one of: "
+                         f"{sorted(_VALID_CATEGORIES)}. Do not invent, paraphrase, or rename categories."
+            }
         if session_mgr.active_subagent_category != category:
             return {"error": f"ERROR: Active subagent is {session_mgr.active_subagent_category}, but you tried to submit {category}."}
         from schemas import ScoreCategoryResult
@@ -1565,20 +1605,20 @@ NEW_TOOLS = [
     },
     {
         "name": "get_category_text",
-        "description": "Acquires the lock for a category and returns its bounded text. Enforces sequential execution.",
+        "description": "Acquires the lock for a credit-scoring category and returns its bounded text. Enforces sequential execution. IMPORTANT: category MUST be one of the exact strings: 'Finances', 'Business & Management', 'Hygiene', 'Banking'. Any other value will be rejected.",
         "inputSchema": {
             "type": "object",
-            "properties": {"category": {"type": "string"}},
+            "properties": {"category": {"type": "string", "enum": ["Finances", "Business & Management", "Hygiene", "Banking"]}},
             "required": ["category"]
         }
     },
     {
         "name": "submit_category_result",
-        "description": "Releases the lock for a category and stores its score result.",
+        "description": "Releases the lock for a credit-scoring category and stores its score result. IMPORTANT: category MUST be one of the exact strings: 'Finances', 'Business & Management', 'Hygiene', 'Banking'.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "category": {"type": "string"},
+                "category": {"type": "string", "enum": ["Finances", "Business & Management", "Hygiene", "Banking"]},
                 "result": {"type": "object"}
             },
             "required": ["category", "result"]

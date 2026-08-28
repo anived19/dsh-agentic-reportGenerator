@@ -53,13 +53,26 @@ def generate_report(user_query: str, run_aml: bool = False) -> None:
         print(f"      -> Editorial goal: {editorial_goal}", flush=True)
 
     print("[2/3] Executing DSH (DeepSeek Harness) agentic orchestrator...", flush=True)
-    agent_state, report = run_dsh_orchestrator(
-        user_query=user_query,
-        initial_company_ref=company_reference,
-        report_type=report_type,
-        editorial_goal=editorial_goal,
-        run_aml=run_aml,
-    )
+    max_session_retries = 3
+    for attempt in range(1, max_session_retries + 1):
+        try:
+            agent_state, report = run_dsh_orchestrator(
+                user_query=user_query,
+                initial_company_ref=company_reference,
+                report_type=report_type,
+                editorial_goal=editorial_goal,
+                run_aml=run_aml,
+            )
+            break
+        except RuntimeError as exc:
+            if "exited prematurely" not in str(exc) or attempt == max_session_retries:
+                raise
+            logger.warning(
+                "Session crashed (attempt %d/%d): %s — cooling down 60s for RPM quota reset...",
+                attempt, max_session_retries, exc,
+            )
+            import time
+            time.sleep(60)
 
     print(f"      -> Resolved ticker: {report.ticker} ({report.company_name})", flush=True)
     print(f"      -> Completed in {agent_state.turn} turn(s) with {len(agent_state.tool_log)} tool call(s)", flush=True)

@@ -178,21 +178,22 @@ def run_dsh_orchestrator(
         )
     task_prompt += (
         f"   [MANDATORY CREDIT SCORING]\n"
-        f"   Before finalizing the report, you MUST spawn 4 subagents using `tool-subagent-scoring` to analyze the following categories:\n"
-        f"   1. Finances\n"
-        f"   2. Business & Management\n"
-        f"   3. Hygiene\n"
-        f"   4. Banking\n"
+        f"   Before finalizing the report, you MUST spawn 4 subagents using `tool-subagent-scoring` to analyze the following categories.\n"
+        f"   CRITICAL: Use these EXACT category strings verbatim. Do NOT paraphrase, rename, or invent category names — any other string will be rejected:\n"
+        f'     - "Finances"\n'
+        f'     - "Business & Management"\n'
+        f'     - "Hygiene"\n'
+        f'     - "Banking"\n'
         f"   To prepare the data for the subagents, you MUST FIRST:\n"
         f"     A) Call mcp__finoscale__fetch_annual_report(company_or_ticker=...) to download the PDF.\n"
         f"     B) IF it succeeded, call mcp__finoscale__parse_report_text(pdf_path=...)\n"
         f"     C) In BOTH cases (success or failure), unconditionally call mcp__finoscale__build_section_index(). It automatically prepares category text from the parsed annual report or falls back to your already-gathered market/AML/sentiment data.\n"
-        f"   Then, for EACH category, perform exactly these steps in order:\n"
-        f"     A) Call mcp__finoscale__get_category_text(category=...) to lock the category and get the bounded text.\n"
-        f"        - It now returns a dictionary: `{{\"text\": \"...\", \"source\": \"annual_report\" | \"fallback_market_data\" | \"none\"}}`.\n"
-        f"        - If `source` is `\"none\"` (e.g. Banking for non-banks), DO NOT spawn the subagent. Consider the category skipped and proceed to the next.\n"
-        f"     B) Call tool-subagent-scoring to spawn the subagent and pass the `text` and `source`. Instruct the subagent to evaluate it and invoke submit_category_result.\n"
-        f"        - CRITICAL CITATION RULE: Instruct the subagent that if the source is `fallback_market_data` rather than an annual report, it MUST cite the originating tool/field (e.g. \"get_ownership: promoter_holding_pct\") instead of a page number in `page_citation`.\n"
+        f"   Then, for EACH of the 4 categories above (using the EXACT string), perform exactly these steps in order:\n"
+        f'     A) Call mcp__finoscale__get_category_text(category="Finances") — use the exact string from the list above.\n'
+        f"        - It returns a dictionary: {{\"text\": \"...\", \"source\": \"annual_report\" | \"fallback_market_data\" | \"none\"}}.\n"
+        f'        - If `source` is `"none"` (e.g. Banking for non-banks), DO NOT spawn the subagent. Consider the category skipped and proceed to the next.\n'
+        f"     B) Call tool-subagent-scoring to spawn the subagent and pass the `text` and `source`. Instruct the subagent to evaluate it and invoke submit_category_result with the SAME exact category string.\n"
+        f'        - CRITICAL CITATION RULE: Instruct the subagent that if the source is `fallback_market_data` rather than an annual report, it MUST cite the originating tool/field (e.g. "get_ownership: promoter_holding_pct") instead of a page number in `page_citation`.\n'
         f"     C) Wait for the subagent to finish and submit the result. (The subagent will auto-terminate after execution).\n"
         f"   After all applicable categories are completed, call mcp__finoscale__submit_for_analyst_review and wait for human response.\n"
     )
