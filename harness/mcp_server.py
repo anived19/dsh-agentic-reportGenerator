@@ -679,7 +679,15 @@ _state_lock = asyncio.Lock()
 async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
     """Execute a tool, update state, and return structured result."""
     # Rate-limit: keep under 15 RPM for Gemini free-tier quota
-    await asyncio.sleep(4.5)
+    # Subagents use 2-3 requests very quickly, so we enforce heavy throttling around their boundaries
+    if name == "get_category_text":
+        logger.info("Throttling for 12.0s before subagent spawn to preserve Gemini 15 RPM quota...")
+        await asyncio.sleep(12.0)
+    elif name == "submit_category_result":
+        logger.info("Throttling for 8.0s after subagent to rebuild Gemini quota bucket...")
+        await asyncio.sleep(8.0)
+    else:
+        await asyncio.sleep(6.0)
     state = session_mgr.state
     state.turn += 1
 

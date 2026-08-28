@@ -16,6 +16,10 @@ from schemas import format_currency_amount
 
 logger = logging.getLogger(__name__)
 
+# Suppress yfinance internal 404 spam when performing discovery
+yf_logger = logging.getLogger("yfinance")
+yf_logger.setLevel(logging.CRITICAL)
+
 # High-conviction sector peer registry (maps normalized ticker to list of peer tickers)
 _KNOWN_PEER_MAP: dict[str, list[str]] = {
     # US Banking / Financials

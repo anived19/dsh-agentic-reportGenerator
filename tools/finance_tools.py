@@ -27,6 +27,10 @@ from utils.retry import retry_on_transient_error
 
 logger = logging.getLogger(__name__)
 
+# Suppress yfinance internal 404 spam
+yf_logger = logging.getLogger("yfinance")
+yf_logger.setLevel(logging.CRITICAL)
+
 # Field partition maps (Maps schema field names -> tuple of yfinance .info keys)
 _PRICE_INFO_FIELDS: dict[str, tuple[str, ...]] = {
     "company_name":    ("shortName", "longName"),
