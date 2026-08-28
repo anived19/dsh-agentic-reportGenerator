@@ -13,6 +13,7 @@ import argparse
 import logging
 import sys
 import os
+import time
 from dotenv import load_dotenv
 
 # Load .env variables into os.environ before anything else so subprocesses inherit them
@@ -54,6 +55,7 @@ def generate_report(user_query: str, run_aml: bool = False) -> None:
 
     print("[2/3] Executing DSH (DeepSeek Harness) agentic orchestrator...", flush=True)
     max_session_retries = 3
+    resumable_session_id = f"dsh_{int(time.time() * 1000)}"
     for attempt in range(1, max_session_retries + 1):
         try:
             agent_state, report = run_dsh_orchestrator(
@@ -62,16 +64,17 @@ def generate_report(user_query: str, run_aml: bool = False) -> None:
                 report_type=report_type,
                 editorial_goal=editorial_goal,
                 run_aml=run_aml,
+                session_id=resumable_session_id,
             )
             break
         except RuntimeError as exc:
             if "exited prematurely" not in str(exc) or attempt == max_session_retries:
                 raise
             logger.warning(
-                "Session crashed (attempt %d/%d): %s — cooling down 60s for RPM quota reset...",
-                attempt, max_session_retries, exc,
+                "Session %s crashed (attempt %d/%d): %s — cooling down 60s for RPM quota reset, "
+                "will RESUME from last checkpoint...",
+                resumable_session_id, attempt, max_session_retries, exc,
             )
-            import time
             time.sleep(60)
 
     print(f"      -> Resolved ticker: {report.ticker} ({report.company_name})", flush=True)

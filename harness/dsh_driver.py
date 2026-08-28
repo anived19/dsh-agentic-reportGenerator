@@ -121,6 +121,7 @@ def run_dsh_orchestrator(
     run_aml: bool = False,
     editorial_goal: Optional[str] = None,
     interactive_fn: Optional[Callable[[str, list[str]], str]] = None,
+    session_id: Optional[str] = None,
 ) -> tuple[AgentState, FinalReport]:
     """
     Drive the report generation pipeline using DeepSeek Harness as the autonomous agent runtime.
@@ -129,8 +130,11 @@ def run_dsh_orchestrator(
     ensure_dsh_environment()
 
     # 1. Initialize Session Directory & Metadata
-    session_id = f"dsh_{int(time.time() * 1000)}"
+    session_id = session_id or f"dsh_{int(time.time() * 1000)}"
     session_dir = settings.cache_dir / "sessions" / session_id
+    
+    is_resume = session_dir.exists() and (session_dir / "session_state.json").exists()
+    
     session_dir.mkdir(parents=True, exist_ok=True)
 
     # Set active session pointer
@@ -148,7 +152,18 @@ def run_dsh_orchestrator(
     (session_dir / "session_init.json").write_text(json.dumps(init_payload, indent=2), encoding="utf-8")
 
     # 2. Build DSH Task Prompt
+    resume_block = ""
+    if is_resume:
+        resume_block = (
+            f"[SYSTEM: RESUME FROM CRASH/TIMEOUT]\n"
+            f"You are resuming session {session_id} which was interrupted.\n"
+            f"DO NOT start from scratch. First, call mcp__finoscale__reflect_on_progress \n"
+            f"to see what has already been completed in this session's state, then pick up exactly \n"
+            f"where you left off.\n\n"
+        )
+
     task_prompt = (
+        f"{resume_block}"
         f"User Request: '{user_query}'\n"
         f"Detected Entity Prior: '{initial_company_ref or 'Unspecified'}'\n"
         f"Report Type: {report_type.value}\n"

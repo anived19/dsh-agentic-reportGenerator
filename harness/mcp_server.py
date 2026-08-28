@@ -120,6 +120,36 @@ class SessionStateManager:
             self.state.market_data = data.get("market_data", {})
             self.state.custom_metrics = data.get("custom_metrics", {})
             self.state.candidate_entities = data.get("candidate_entities", [])
+            self.state.completed_tools = data.get("completed_tools", [])
+            self.state.credit_scoring_attempted = data.get("credit_scoring_attempted", False)
+
+            if data.get("score_results"):
+                from schemas import ScoreCategoryResult
+                try:
+                    self.state.score_results = [
+                        ScoreCategoryResult.model_validate(r) for r in data["score_results"]
+                    ]
+                except Exception as exc:
+                    logger.warning("Failed to hydrate score_results for session %s: %s", self.session_id, exc)
+
+            if data.get("analyst_review_status"):
+                from schemas import AnalystReviewStatus
+                try:
+                    self.state.analyst_review_status = AnalystReviewStatus(data["analyst_review_status"])
+                except Exception:
+                    pass
+
+            # NOTE: deliberately NOT restoring active_subagent_category from disk.
+            # It lives on SessionStateManager (not AgentState) as an in-process lock.
+            # If a crash happened while a subagent category was locked but never
+            # submitted, the fresh DSH conversation on resume has zero memory of
+            # ever calling get_category_text for it — so restoring the lock would
+            # permanently block that category (nothing could ever call
+            # submit_category_result to release it). Always start unlocked; the
+            # category-completeness guard in get_category_text (Bug 3 fix) is what
+            # prevents re-scoring anything that actually finished.
+            self.active_subagent_category = None
+
             if data.get("report_spec"):
                 self.state.report_spec = ReportSpec.model_validate(data["report_spec"])
             if data.get("sentiment_findings"):
@@ -200,11 +230,15 @@ class SessionStateManager:
             state_file = self.session_dir / "session_state.json"
             data = {
                 "session_id": self.session_id,
+                "user_query": self.state.user_query,
+                "company_reference": self.state.company_reference,
                 "ticker": self.state.ticker,
                 "company_name": self.state.company_name,
                 "report_type": self.state.report_type.value,
                 "editorial_goal": self.state.editorial_goal,
                 "run_aml": self.state.run_aml,
+                "credit_scoring_attempted": self.state.credit_scoring_attempted,
+                "completed_tools": self.state.completed_tools,
                 "status": self.state.status.value,
                 "turn": self.state.turn,
                 "market_data": self.state.market_data,
@@ -222,6 +256,7 @@ class SessionStateManager:
                 "tool_log": [t.model_dump() for t in self.state.tool_log],
                 "score_results": [r.model_dump() for r in self.state.score_results],
                 "analyst_review_status": self.state.analyst_review_status.value,
+                "active_subagent_category": self.active_subagent_category,
                 "tool_call_summary": {
                     "total_calls": len(self.state.tool_log),
                     "unique_tools": list(set(t.tool_name for t in self.state.tool_log)),
@@ -714,8 +749,12 @@ _rate_limiter = _RateLimiter(max_calls=13, window_seconds=60.0)
 
 async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
     """Execute a tool, update state, and return structured result."""
-    # Adaptive rate-limit: only sleeps when approaching 15 RPM ceiling
-    await _rate_limiter.acquire()
+    if name == "get_category_text":
+        logger.info("Throttling for 12.0s before subagent spawn to preserve Gemini 15 RPM quota...")
+        await asyncio.sleep(12.0)
+    elif name == "submit_category_result":
+        logger.info("Throttling for 8.0s after subagent to rebuild Gemini quota bucket...")
+        await asyncio.sleep(8.0)
     state = session_mgr.state
     state.turn += 1
 
@@ -1469,6 +1508,14 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
                 "error": f"INVALID CATEGORY '{category}'. You MUST use exactly one of: "
                          f"{sorted(_VALID_CATEGORIES)}. Do not invent, paraphrase, or rename categories."
             }
+        completed_categories = {r.score_category.value for r in state.score_results}
+        if category in completed_categories:
+            return {
+                "status": "already_completed",
+                "message": f"{category} was already scored and submitted in this session. "
+                           f"Do NOT spawn another subagent for it — move on to the next category, "
+                           f"or if all applicable categories are done, call submit_for_analyst_review.",
+            }
         if session_mgr.active_subagent_category is not None:
             return {"error": f"ERROR: Subagent for {session_mgr.active_subagent_category} is already active. You MUST use submit_category_result to unlock it before spawning the next."}
         session_mgr.active_subagent_category = category
@@ -1699,6 +1746,9 @@ async def call_tool(name: str, arguments: dict[str, Any] | None) -> list[TextCon
     try:
         result = await _dispatch_tool(name, arguments)
         rec.result_summary = str(result)[:200]
+        if isinstance(result, dict) and "error" in result:
+            rec.ok = False
+            rec.error = str(result["error"])[:500]
         session_mgr.state.tool_log.append(rec)
         session_mgr.checkpoint()
         return [TextContent(type="text", text=json.dumps(result, default=str, ensure_ascii=False))]
