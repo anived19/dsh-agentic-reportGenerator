@@ -1,0 +1,8 @@
+{
+  "name": "@finoscale/tool-finoscale-apis",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "dependencies": {
+    "cordis": "^3.0.0"
+  }
+}

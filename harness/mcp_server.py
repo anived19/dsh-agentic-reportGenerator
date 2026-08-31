@@ -744,16 +744,20 @@ class _RateLimiter:
         self._timestamps.append(time.monotonic())
 
 
-_rate_limiter = _RateLimiter(max_calls=13, window_seconds=60.0)
+_rate_limiter = _RateLimiter(max_calls=10, window_seconds=60.0)
 
 
 async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
     """Execute a tool, update state, and return structured result."""
+    # Restore universal pacing — protects EVERY tool call, not just the subagent
+    # boundary. Keep the extra subagent-specific buffer on top of it, since a
+    # subagent spawn is DSH-native and invisible to this limiter's call count.
+    await _rate_limiter.acquire()
     if name == "get_category_text":
-        logger.info("Throttling for 12.0s before subagent spawn to preserve Gemini 15 RPM quota...")
+        logger.info("Extra buffer: 12.0s before subagent spawn (opaque internal Gemini usage).")
         await asyncio.sleep(12.0)
     elif name == "submit_category_result":
-        logger.info("Throttling for 8.0s after subagent to rebuild Gemini quota bucket...")
+        logger.info("Extra buffer: 8.0s after subagent returns.")
         await asyncio.sleep(8.0)
     state = session_mgr.state
     state.turn += 1
@@ -1485,10 +1489,11 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
             if response_file.exists():
                 try:
                     resp = json.loads(response_file.read_text(encoding="utf-8"))
-                    if resp.get("status") == "APPROVED":
+                    status = str(resp.get("status", "")).upper()
+                    if status == "APPROVED":
                         state.analyst_review_status = AnalystReviewStatus.APPROVED
                         return {"status": "success", "instruction": "Approved. Proceed to finalize_report."}
-                    elif resp.get("status") == "REJECTED":
+                    elif status == "REJECTED":
                         state.analyst_review_status = AnalystReviewStatus.REJECTED
                         response_file.unlink(missing_ok=True)
                         pending_file.unlink(missing_ok=True)
