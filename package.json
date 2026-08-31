@@ -12,7 +12,8 @@
     "cordis": "^3.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.0.0",
-    "@types/node": "^20.0.0"
+    "@deepseek-ai/dsh": "0.1.2-alpha.2",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
   }
 }

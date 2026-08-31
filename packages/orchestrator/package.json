@@ -1,9 +1,0 @@
-{
-  "name": "@orchestrator/agents",
-  "version": "1.0.0",
-  "main": "src/index.ts",
-  "dependencies": {
-    "cordis": "^3.0.0",
-    "@nanmicoder/dsh-agent-teams": "^0.1.15"
-  }
-}

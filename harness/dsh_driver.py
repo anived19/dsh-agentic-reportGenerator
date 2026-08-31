@@ -29,7 +29,7 @@ from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv(), override=True)
 
 from config import settings
-from harness.synthesis import render_aml_markdown, run_chief_editor
+
 from schemas import (
     AgentState,
     AgentStatus,
@@ -37,7 +37,6 @@ from schemas import (
     AMLScreeningResult,
     AMLSeverity,
     CitedClaim,
-    FinalReport,
     MarketMetrics,
     ReportSpec,
     ReportType,
@@ -48,7 +47,7 @@ from schemas import (
     ToolCallRecord,
     ValidationResult,
 )
-from tools.finance_tools import assemble_market_metrics
+
 
 logger = logging.getLogger(__name__)
 
@@ -163,65 +162,11 @@ def run_dsh_orchestrator(
         )
 
     task_prompt = (
-        f"{resume_block}"
-        f"User Request: '{user_query}'\n"
-        f"Detected Entity Prior: '{initial_company_ref or 'Unspecified'}'\n"
-        f"Report Type: {report_type.value}\n"
-        f"Editorial Goal: {editorial_goal or 'Standard Comprehensive Financial Analysis'}\n"
-        f"AML Compliance Screening: {run_aml}\n\n"
-        f"EXECUTION INSTRUCTIONS:\n"
-        f"1. If company/ticker is not yet resolved, call mcp__finoscale__resolve_entity.\n"
-        f"2. Dynamically fetch required market data categories using MCP tools:\n"
-        f"   - mcp__finoscale__get_price_snapshot\n"
-        f"   - mcp__finoscale__get_valuation_multiples\n"
-        f"   - mcp__finoscale__get_fundamentals\n"
-        f"   - mcp__finoscale__get_quarterly_financials\n"
-        f"   - mcp__finoscale__get_technicals\n"
-        f"   - mcp__finoscale__get_ownership\n"
-        f"   - mcp__finoscale__compute_banking_metrics / compute_saas_metrics / compute_retail_consumer_metrics (sector calculator)\n"
-        f"   - mcp__finoscale__get_peer_tickers (competitor peer multiples matrix)\n"
-        f"   - mcp__finoscale__scrape_moneycontrol (for Indian equities: 20D delivery %, VWAP, Beta)\n"
-        f"3. Call mcp__finoscale__search_web_news for live sentiment (max 3-5 searches).\n"
-        f"   - If sharp QoQ profit drops or anomalies appear, call mcp__finoscale__investigate_financial_anomaly\n"
-        f"   - To read full text or tables from any web URL / filing, call mcp__finoscale__scrape_url\n"
-    )
-    if run_aml:
-        task_prompt += (
-            f"4. Run compliance screening:\n"
-            f"   - mcp__finoscale__run_structured_aml_sweep\n"
-            f"   - mcp__finoscale__search_adverse_media\n"
-        )
-    task_prompt += (
-        f"   [MANDATORY CREDIT SCORING]\n"
-        f"   Before finalizing the report, you MUST spawn 4 subagents using `tool-subagent-scoring` to analyze the following categories.\n"
-        f"   CRITICAL: Use these EXACT category strings verbatim. Do NOT paraphrase, rename, or invent category names — any other string will be rejected:\n"
-        f'     - "Finances"\n'
-        f'     - "Business & Management"\n'
-        f'     - "Hygiene"\n'
-        f'     - "Banking"\n'
-        f"   To prepare the data for the subagents, you MUST FIRST:\n"
-        f"     A) Call mcp__finoscale__fetch_annual_report(company_or_ticker=...) to download the PDF.\n"
-        f"     B) IF it succeeded, call mcp__finoscale__parse_report_text(pdf_path=...)\n"
-        f"     C) In BOTH cases (success or failure), unconditionally call mcp__finoscale__build_section_index(). It automatically prepares category text from the parsed annual report or falls back to your already-gathered market/AML/sentiment data.\n"
-        f"   Then, for EACH of the 4 categories above (using the EXACT string), perform exactly these steps in order:\n"
-        f'     A) Call mcp__finoscale__get_category_text(category="Finances") — use the exact string from the list above.\n'
-        f"        - It returns a dictionary: {{\"text\": \"...\", \"source\": \"annual_report\" | \"fallback_market_data\" | \"none\"}}.\n"
-        f'        - If `source` is `"none"` (e.g. Banking for non-banks), DO NOT spawn the subagent. Consider the category skipped and proceed to the next.\n'
-        f"     B) Call tool-subagent-scoring to spawn the subagent and pass the `text` and `source`. Instruct the subagent to evaluate it and invoke submit_category_result with the SAME exact category string.\n"
-        f'        - CRITICAL CITATION RULE: Instruct the subagent that if the source is `fallback_market_data` rather than an annual report, it MUST cite the originating tool/field (e.g. "get_ownership: promoter_holding_pct") instead of a page number in `page_citation`.\n'
-        f"     C) Wait for the subagent to finish and submit the result. (The subagent will auto-terminate after execution).\n"
-        f"   After all applicable categories are completed, call mcp__finoscale__submit_for_analyst_review and wait for human response.\n"
-    )
-    task_prompt += (
-        f"   [TOOL DEDUPLICATION RULE]\n"
-        f"   Do not re-invoke financial snapshot or resolution tools (e.g., get_price_snapshot, get_fundamentals, get_technicals, resolve_entity) if they have already succeeded in the current session.\n"
-    )
-    task_prompt += (
-        f"5. Call mcp__finoscale__audit_draft to cross-check numbers against empirical data.\n"
-        f"6. Call mcp__finoscale__reflect_on_progress to summarize gathered data.\n"
-        f"7. Call mcp__finoscale__validate_data. Verify requirements are satisfied.\n"
-        f"8. Call mcp__finoscale__plan_report_format with a tailored ReportSpec (max 5-7 sections).\n"
-        f"9. Call mcp__finoscale__finalize_report to complete your execution."
+        f"Goal: Produce a financial research report for {initial_company_ref or user_query}.\n\n"
+        f"You have access to the agent_teams_* tools to organize your work. "
+        f"Design a team structure and task DAG that makes sense for gathering market data, "
+        f"performing compliance checks, computing metrics, and synthesizing the final report. "
+        f"Coordinate your members and wait for them to finish, then present the consolidated markdown and call finalize_report.\n"
     )
 
     # 3. Setup Process Environment
@@ -237,7 +182,7 @@ def run_dsh_orchestrator(
 
     npx_bin = _find_npx_executable()
     cordis_path = Path("cordis.yml").resolve()
-    cmd = [npx_bin, "@deepseek-ai/dsh", "--profile", "headless", "--patch", str(cordis_path), task_prompt]
+    cmd = [npx_bin, "@deepseek-ai/dsh@0.1.2-alpha.2", "run", "--profile", "headless", "--patch", str(cordis_path), task_prompt]
 
     print(f"\n[DSH Harness] Spawning DeepSeek Harness Agent Runtime (Session: {session_id})...")
     print(f"  -> Model Route: google:gemini-3.5-flash-lite (via @deepseek-ai/dsh-llm-pi-ai)")
@@ -443,63 +388,19 @@ def run_dsh_orchestrator(
         except Exception as peer_exc:
             logger.debug("Automatic peer resolution fallback failed for %s: %s", ticker, peer_exc)
 
-    # 7. Assemble Grounded MarketMetrics from DSH Data (Zero Re-Fetching)
-    market_metrics = assemble_market_metrics(ticker, market_data)
-
-    # 8. Stage 3: Chief Editor Synthesis (Single-Shot Grounded Call)
-    print("\n[Chief Editor] Synthesizing final research report from DSH empirical findings...")
-    markdown_body = run_chief_editor(
-        market_metrics=market_metrics,
-        sentiment_findings=sentiment_findings,
-        report_type=report_type,
-        report_spec=report_spec,
-        editorial_goal=state.editorial_goal,
-        aml_result=aml_result if run_aml else None,
-        score_results=score_results,
-    )
-    telemetry.gemini_calls += 1
-
-    if run_aml and aml_result:
-        aml_md = render_aml_markdown(aml_result)
-        markdown_body = markdown_body + "\n\n" + aml_md
-        
-    if score_results:
-        from harness.synthesis import render_credit_scoring_markdown
-        score_md = render_credit_scoring_markdown(score_results)
-        if score_md:
-            markdown_body = markdown_body + "\n\n" + score_md
-
-    # 9. KPI Cards Assembly
-    kpi_cards: list[dict[str, str]] = []
-    if market_metrics.current_price_formatted:
-        kpi_cards.append({"label": "Current Price", "value": market_metrics.current_price_formatted, "note": "Market close"})
-    if market_metrics.market_cap_formatted:
-        kpi_cards.append({"label": "Market Cap", "value": market_metrics.market_cap_formatted, "note": "Scale"})
-    if market_metrics.pe_ratio_formatted:
-        kpi_cards.append({"label": "P/E Ratio", "value": market_metrics.pe_ratio_formatted, "note": "TTM multiple"})
-    if market_metrics.roe_formatted:
-        kpi_cards.append({"label": "Return on Equity", "value": market_metrics.roe_formatted, "note": "Profitability"})
-    for cm_name, cm_val in state.custom_metrics.items():
-        if isinstance(cm_val, dict) and cm_val.get("formatted_value") and cm_val.get("status") == "ok":
-            kpi_cards.append({
-                "label": cm_name.replace("_", " ").title(),
-                "value": str(cm_val["formatted_value"]),
-                "note": "Custom Metric",
-            })
-
-    final_report = FinalReport(
-        ticker=ticker,
-        company_name=company_name,
-        report_type=report_type,
-        editorial_goal=state.editorial_goal,
-        markdown_body=markdown_body,
-        market_metrics=market_metrics,
-        sentiment_findings=sentiment_findings,
-        aml_result=aml_result,
-        report_spec=report_spec,
-        telemetry=telemetry,
-        kpi_cards=kpi_cards[:6],
-    )
+    # 7. Extract PDF path from the final tool log (render_report_pdf)
+    pdf_path = None
+    for call in reversed(state.tool_log):
+        if call.tool_name == "render_report_pdf" and call.ok:
+            try:
+                res = json.loads(call.result) if isinstance(call.result, str) else call.result
+                pdf_path = res.get("pdf_path")
+            except Exception:
+                pass
+            break
+            
+    if not pdf_path:
+        logger.warning("Agent finished but no PDF path was returned by render_report_pdf.")
 
     # 10. Write Trace JSON File
     try:
@@ -528,4 +429,4 @@ def run_dsh_orchestrator(
     except Exception as exc:
         logger.warning("Could not write trace file: %s", exc)
 
-    return state, final_report
+    return state, pdf_path

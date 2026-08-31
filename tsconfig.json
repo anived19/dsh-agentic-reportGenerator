@@ -2,22 +2,7 @@
   "files": [],
   "references": [
     {
-      "path": "./packages/compliance/tool-aml-sweeps"
-    },
-    {
       "path": "./packages/finoscale/entity-guard"
-    },
-    {
-      "path": "./packages/finoscale/tool-finoscale-apis"
-    },
-    {
-      "path": "./packages/finoscale/tool-render-pdf"
-    },
-    {
-      "path": "./packages/orchestrator"
-    },
-    {
-      "path": "./packages/scoring/dynamic-scoring-plugin"
     }
   ]
 }

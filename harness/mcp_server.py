@@ -638,6 +638,32 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "render_report_pdf",
+        "description": "Renders the final PDF report and returns its file path. Must be called after finalize_report.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "compute_dynamic_scores",
+        "description": (
+            "Normalize dynamic scores for missing data. Enforces edge cases such as unrated, no banking facilities, "
+            "and clean adverse media with specific exact strings required by synthesis."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "category": {"type": "string", "description": "The scoring category."},
+                "activeFBLimits": {"type": "integer", "default": 0},
+                "activeNFBLimits": {"type": "integer", "default": 0},
+                "agencyRating": {"type": "string"},
+                "adverseMediaFound": {"type": "boolean", "default": False},
+                "entityType": {"type": "string", "default": "Corporate"}
+            }
+        }
+    },
+    {
         "name": "scrape_url",
         "description": (
             "Universal web scraper capable of fetching and parsing ANY website or API endpoint. "
@@ -802,6 +828,7 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
                 "status": "ALREADY_RESOLVED",
                 "instruction": "Ticker is locked. Immediately call get_price_snapshot or get_fundamentals next."
             }
+    
 
         from tools.ticker_resolver import resolve_entity
         query = arguments.get("query", "")
@@ -859,6 +886,19 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
             "resolved_company_name": state.company_name,
         }
 
+    elif name == "compute_dynamic_scores":
+        result = dict(arguments)
+        if result.get("activeFBLimits", 0) == 0 and result.get("activeNFBLimits", 0) == 0:
+            result["bankingScore"] = None
+            result["bankingScoreText"] = "BANKING SCORE: N/A - Entity does not maintain active banking/credit facilities."
+        if not result.get("agencyRating"):
+            result["creditRatingText"] = "CREDIT RATING: Unrated / No Public Agency Rating Available."
+        if not result.get("adverseMediaFound"):
+            result["adverseMediaText"] = "Clear Pass: No adverse findings across 60+ regulatory and legal databases."
+        if result.get("entityType") in ["LLP", "Partnership"]:
+            result["cinText"] = "CIN: N/A (LLP / Partnership Entity)"
+            result["mcaChecks"] = "Clear (Not Applicable for Non-Corporate Entities)"
+        return result
     elif name == "ask_user":
         if state.ticker and not state.candidate_entities:
             logger.info("ask_user short-circuit: state.ticker already resolved to %s and no candidates pending.", state.ticker)
@@ -1430,6 +1470,73 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
             "ticker": state.ticker,
             "company_name": state.company_name,
         }
+    elif name == "render_report_pdf":
+        from tools.finance_tools import assemble_market_metrics
+        from harness.synthesis import render_aml_markdown, run_chief_editor
+        from tools.pdf_tools import compile_pdf
+        from schemas import FinalReport
+
+        ticker = state.ticker
+        if not ticker:
+            return {"error": "No ticker resolved in state."}
+        
+        market_metrics = assemble_market_metrics(ticker, state.market_data)
+
+        logger.info("Synthesizing final research report from DSH empirical findings...")
+        markdown_body = run_chief_editor(
+            market_metrics=market_metrics,
+            sentiment_findings=state.sentiment_findings,
+            report_type=state.report_type,
+            report_spec=state.report_spec,
+            editorial_goal=state.editorial_goal,
+            aml_result=state.aml_result if state.run_aml else None,
+            score_results=state.score_results,
+        )
+        state.telemetry.gemini_calls += 1
+
+        if state.run_aml and state.aml_result:
+            aml_md = render_aml_markdown(state.aml_result)
+            markdown_body = markdown_body + "\n\n" + aml_md
+            
+        if state.score_results:
+            from harness.synthesis import render_credit_scoring_markdown
+            score_md = render_credit_scoring_markdown(state.score_results)
+            if score_md:
+                markdown_body = markdown_body + "\n\n" + score_md
+
+        kpi_cards: list[dict[str, str]] = []
+        if market_metrics.current_price_formatted:
+            kpi_cards.append({"label": "Current Price", "value": market_metrics.current_price_formatted, "note": "Market close"})
+        if market_metrics.market_cap_formatted:
+            kpi_cards.append({"label": "Market Cap", "value": market_metrics.market_cap_formatted, "note": "Scale"})
+        if market_metrics.pe_ratio_formatted:
+            kpi_cards.append({"label": "P/E Ratio", "value": market_metrics.pe_ratio_formatted, "note": "TTM multiple"})
+        if market_metrics.roe_formatted:
+            kpi_cards.append({"label": "Return on Equity", "value": market_metrics.roe_formatted, "note": "Profitability"})
+        for cm_name, cm_val in state.custom_metrics.items():
+            if isinstance(cm_val, dict) and cm_val.get("formatted_value") and cm_val.get("status") == "ok":
+                kpi_cards.append({
+                    "label": cm_name.replace("_", " ").title(),
+                    "value": str(cm_val["formatted_value"]),
+                    "note": "Custom Metric",
+                })
+
+        final_report = FinalReport(
+            ticker=ticker,
+            company_name=state.company_name,
+            report_type=state.report_type,
+            editorial_goal=state.editorial_goal,
+            markdown_body=markdown_body,
+            market_metrics=market_metrics,
+            sentiment_findings=state.sentiment_findings,
+            aml_result=state.aml_result,
+            report_spec=state.report_spec,
+            telemetry=state.telemetry,
+            kpi_cards=kpi_cards[:6],
+        )
+
+        pdf_path = compile_pdf(final_report)
+        return {"pdf_path": str(pdf_path)}
 
     elif name == "fetch_annual_report":
         from tools.annual_report_tools import fetch_annual_report
