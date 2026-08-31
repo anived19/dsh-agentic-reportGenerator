@@ -1,1 +1,0 @@
-{"root":["../packages/finoscale/entity-guard/src/index.ts","../packages/finoscale/tool-finoscale-apis/src/index.ts","../packages/finoscale/tool-render-pdf/src/index.ts","../packages/orchestrator/agent-team-coordinator/src/index.ts","../packages/scoring/dynamic-scoring-plugin/src/index.ts"],"errors":true,"version":"5.9.3"}

@@ -204,12 +204,17 @@
 - id: tool-goal
   disabled: true
 - id: tool-skill
-  disabled: true
+  disabled: false
 - id: tool-jobs
   disabled: true
 
 # ─── Insert MCP Server Plugin ───
 - insert:
+    - id: agent-teams
+      name: '@nanmicoder/dsh-agent-teams'
+      config:
+        stateDir: .agent-teams
+        memberProvider: spawn
     - id: finoscale-mcp
       name: '@deepseek-ai/dsh-mcp-client'
       config:

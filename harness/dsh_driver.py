@@ -163,65 +163,18 @@ def run_dsh_orchestrator(
         )
 
     task_prompt = (
-        f"{resume_block}"
-        f"User Request: '{user_query}'\n"
-        f"Detected Entity Prior: '{initial_company_ref or 'Unspecified'}'\n"
-        f"Report Type: {report_type.value}\n"
-        f"Editorial Goal: {editorial_goal or 'Standard Comprehensive Financial Analysis'}\n"
-        f"AML Compliance Screening: {run_aml}\n\n"
-        f"EXECUTION INSTRUCTIONS:\n"
-        f"1. If company/ticker is not yet resolved, call mcp__finoscale__resolve_entity.\n"
-        f"2. Dynamically fetch required market data categories using MCP tools:\n"
-        f"   - mcp__finoscale__get_price_snapshot\n"
-        f"   - mcp__finoscale__get_valuation_multiples\n"
-        f"   - mcp__finoscale__get_fundamentals\n"
-        f"   - mcp__finoscale__get_quarterly_financials\n"
-        f"   - mcp__finoscale__get_technicals\n"
-        f"   - mcp__finoscale__get_ownership\n"
-        f"   - mcp__finoscale__compute_banking_metrics / compute_saas_metrics / compute_retail_consumer_metrics (sector calculator)\n"
-        f"   - mcp__finoscale__get_peer_tickers (competitor peer multiples matrix)\n"
-        f"   - mcp__finoscale__scrape_moneycontrol (for Indian equities: 20D delivery %, VWAP, Beta)\n"
-        f"3. Call mcp__finoscale__search_web_news for live sentiment (max 3-5 searches).\n"
-        f"   - If sharp QoQ profit drops or anomalies appear, call mcp__finoscale__investigate_financial_anomaly\n"
-        f"   - To read full text or tables from any web URL / filing, call mcp__finoscale__scrape_url\n"
-    )
-    if run_aml:
-        task_prompt += (
-            f"4. Run compliance screening:\n"
-            f"   - mcp__finoscale__run_structured_aml_sweep\n"
-            f"   - mcp__finoscale__search_adverse_media\n"
-        )
-    task_prompt += (
-        f"   [MANDATORY CREDIT SCORING]\n"
-        f"   Before finalizing the report, you MUST spawn 4 subagents using `tool-subagent-scoring` to analyze the following categories.\n"
-        f"   CRITICAL: Use these EXACT category strings verbatim. Do NOT paraphrase, rename, or invent category names — any other string will be rejected:\n"
-        f'     - "Finances"\n'
-        f'     - "Business & Management"\n'
-        f'     - "Hygiene"\n'
-        f'     - "Banking"\n'
-        f"   To prepare the data for the subagents, you MUST FIRST:\n"
-        f"     A) Call mcp__finoscale__fetch_annual_report(company_or_ticker=...) to download the PDF.\n"
-        f"     B) IF it succeeded, call mcp__finoscale__parse_report_text(pdf_path=...)\n"
-        f"     C) In BOTH cases (success or failure), unconditionally call mcp__finoscale__build_section_index(). It automatically prepares category text from the parsed annual report or falls back to your already-gathered market/AML/sentiment data.\n"
-        f"   Then, for EACH of the 4 categories above (using the EXACT string), perform exactly these steps in order:\n"
-        f'     A) Call mcp__finoscale__get_category_text(category="Finances") — use the exact string from the list above.\n'
-        f"        - It returns a dictionary: {{\"text\": \"...\", \"source\": \"annual_report\" | \"fallback_market_data\" | \"none\"}}.\n"
-        f'        - If `source` is `"none"` (e.g. Banking for non-banks), DO NOT spawn the subagent. Consider the category skipped and proceed to the next.\n'
-        f"     B) Call tool-subagent-scoring to spawn the subagent and pass the `text` and `source`. Instruct the subagent to evaluate it and invoke submit_category_result with the SAME exact category string.\n"
-        f'        - CRITICAL CITATION RULE: Instruct the subagent that if the source is `fallback_market_data` rather than an annual report, it MUST cite the originating tool/field (e.g. "get_ownership: promoter_holding_pct") instead of a page number in `page_citation`.\n'
-        f"     C) Wait for the subagent to finish and submit the result. (The subagent will auto-terminate after execution).\n"
-        f"   After all applicable categories are completed, call mcp__finoscale__submit_for_analyst_review and wait for human response.\n"
-    )
-    task_prompt += (
-        f"   [TOOL DEDUPLICATION RULE]\n"
-        f"   Do not re-invoke financial snapshot or resolution tools (e.g., get_price_snapshot, get_fundamentals, get_technicals, resolve_entity) if they have already succeeded in the current session.\n"
-    )
-    task_prompt += (
-        f"5. Call mcp__finoscale__audit_draft to cross-check numbers against empirical data.\n"
-        f"6. Call mcp__finoscale__reflect_on_progress to summarize gathered data.\n"
-        f"7. Call mcp__finoscale__validate_data. Verify requirements are satisfied.\n"
-        f"8. Call mcp__finoscale__plan_report_format with a tailored ReportSpec (max 5-7 sections).\n"
-        f"9. Call mcp__finoscale__finalize_report to complete your execution."
+        f"/agent-teams Produce a financial research report for {initial_company_ref or user_query}.\n\n"
+        f"Create a team. Add two members: 'market-data' (role: financial data analyst) and "
+        f"'aml-media' (role: compliance and sentiment analyst). Create two tasks with no "
+        f"dependencies between them — one for market-data covering price snapshot, valuation, "
+        f"fundamentals, technicals, ownership, sector metrics, and peer benchmarking; one for "
+        f"aml-media covering the structured AML sweep and adverse-media/news search — so they "
+        f"can run concurrently. Then add a 'synthesis' member and create a task for it that "
+        f"depends on both prior tasks: build the section index, then spawn four scorer members "
+        f"('finance-scorer', 'banking-scorer', 'business-scorer', 'hygiene-scorer') each with "
+        f"one task depending on the section-index task, using the credit-report-format skill to "
+        f"assemble the final 13-section report. Wait for every task to complete, then present the "
+        f"consolidated markdown and call finalize_report.\n"
     )
 
     # 3. Setup Process Environment
@@ -237,7 +190,7 @@ def run_dsh_orchestrator(
 
     npx_bin = _find_npx_executable()
     cordis_path = Path("cordis.yml").resolve()
-    cmd = [npx_bin, "@deepseek-ai/dsh", "--profile", "headless", "--patch", str(cordis_path), task_prompt]
+    cmd = [npx_bin, "@deepseek-ai/dsh@0.1.2-alpha.2", "--profile", "headless", "--patch", str(cordis_path), task_prompt]
 
     print(f"\n[DSH Harness] Spawning DeepSeek Harness Agent Runtime (Session: {session_id})...")
     print(f"  -> Model Route: google:gemini-3.5-flash-lite (via @deepseek-ai/dsh-llm-pi-ai)")
