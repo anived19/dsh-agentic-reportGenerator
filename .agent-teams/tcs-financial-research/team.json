@@ -1,0 +1,100 @@
+{
+  "name": "tcs_financial_research",
+  "id": "tcs-financial-research",
+  "description": "Produce a comprehensive financial research report and compliance review for Tata Consultancy Services (TCS.NS).",
+  "captainSessionId": "session-7590e1f1-5863-4498-86c2-cc34e394851c",
+  "createdAt": 1788179723522,
+  "members": [
+    {
+      "id": "",
+      "name": "financial_analyst",
+      "role": "Financial Research Analyst",
+      "provider": "google",
+      "model": "gemini-3.5-flash-lite",
+      "joinedAt": 1788179724636,
+      "status": "idle"
+    },
+    {
+      "id": "",
+      "name": "compliance_officer",
+      "role": "Compliance & AML Screening Specialist",
+      "provider": "google",
+      "model": "gemini-3.5-flash-lite",
+      "joinedAt": 1788179724642,
+      "status": "idle"
+    },
+    {
+      "id": "",
+      "name": "credit_risk_officer",
+      "role": "Chief Risk Officer & Synthesis Auditor",
+      "provider": "google",
+      "model": "gemini-3.5-flash-lite",
+      "joinedAt": 1788179724649,
+      "status": "idle"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "t1",
+      "subject": "Gather Financial Data for TCS.NS",
+      "description": "Gather comprehensive price snapshots, valuation multiples, fundamentals, quarterly financials, and peer benchmarks for TCS.NS.",
+      "status": "pending",
+      "assignee": "financial_analyst",
+      "dependencies": [],
+      "attempt": 0,
+      "createdAt": 1788179729024,
+      "updatedAt": 1788179732615,
+      "kind": "implementation",
+      "objective": "Collect complete financial and market data for TCS.NS.",
+      "inScope": [
+        "."
+      ],
+      "acceptance": [
+        "All financial metrics, valuation multiples, quarterly financials, and peer comparisons for TCS.NS are successfully gathered."
+      ],
+      "verify": [
+        "python -c \"import harness\""
+      ]
+    },
+    {
+      "id": "t2",
+      "subject": "Execute AML & Compliance Screening for TCS",
+      "description": "Run structured AML sweep and adverse media search for Tata Consultancy Services.",
+      "status": "pending",
+      "assignee": "compliance_officer",
+      "dependencies": [],
+      "attempt": 0,
+      "createdAt": 1788179738982,
+      "updatedAt": 1788179738982,
+      "kind": "work",
+      "acceptance": [
+        "AML sweep across 8 structured databases and adverse media search for TCS are fully executed and recorded."
+      ]
+    },
+    {
+      "id": "t3",
+      "subject": "Validate Data and Render PDF Report",
+      "description": "Validate gathered data sufficiency, plan report sections, audit draft claims, and render the final PDF report.",
+      "status": "pending",
+      "assignee": "credit_risk_officer",
+      "dependencies": [
+        "t1",
+        "t2"
+      ],
+      "attempt": 0,
+      "createdAt": 1788179740311,
+      "updatedAt": 1788179740311,
+      "kind": "verification",
+      "objective": "Validate data and render the final credit & research report PDF.",
+      "acceptance": [
+        "Data sufficiency is validated, report format is planned, and final report PDF is successfully rendered."
+      ],
+      "verify": [
+        "python -c \"import harness\""
+      ]
+    }
+  ],
+  "taskSeq": 3,
+  "phase": "staged",
+  "planReviewState": "awaiting_review"
+}
