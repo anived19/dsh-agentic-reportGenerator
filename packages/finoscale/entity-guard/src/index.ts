@@ -2,6 +2,7 @@ import { Context, Service } from '@deepseek-ai/cordis';
 import '@deepseek-ai/dsh-tools';
 
 export const name = 'entity-guard';
+export const inject = ['tools'];
 
 declare module '@deepseek-ai/cordis' {
     interface Context {

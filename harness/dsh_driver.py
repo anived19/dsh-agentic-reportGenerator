@@ -182,7 +182,7 @@ def run_dsh_orchestrator(
 
     npx_bin = _find_npx_executable()
     cordis_path = Path("cordis.yml").resolve()
-    cmd = [npx_bin, "@deepseek-ai/dsh@0.1.2-alpha.2", "run", "--profile", "headless", "--patch", str(cordis_path), task_prompt]
+    cmd = [npx_bin, "@deepseek-ai/dsh@0.1.2-alpha.2", "--profile", "headless", "--patch", str(cordis_path), task_prompt]
 
     print(f"\n[DSH Harness] Spawning DeepSeek Harness Agent Runtime (Session: {session_id})...")
     print(f"  -> Model Route: google:gemini-3.5-flash-lite (via @deepseek-ai/dsh-llm-pi-ai)")
