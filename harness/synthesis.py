@@ -604,7 +604,9 @@ def run_chief_editor(
         avg_score = compute_average_score(score_results)
         score_context_block = f"\n\nCREDIT SCORING RESULTS (Average Score: {avg_score:.1f}/100):\n"
         for res in score_results:
-            score_context_block += f"- {res.category.value}: {res.score}/100\n  Strength: {res.key_strength}\n  Weakness: {res.key_weakness}\n"
+            comfort = res.comforts[0].claim if res.comforts else "N/A"
+            discomfort = res.discomforts[0].claim if res.discomforts else "N/A"
+            score_context_block += f"- {res.score_category.value}: {res.score_value:.0f}/100\n  Strength: {comfort}\n  Weakness: {discomfort}\n"
         score_context_block += "\nMANDATORY RULE: If credit scoring results are provided, you MUST explicitly include a 'Credit Scoring Summary' subsection synthesizing these scores and the average."
 
     user_message = (

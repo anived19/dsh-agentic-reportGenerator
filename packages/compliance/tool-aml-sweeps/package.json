@@ -1,0 +1,8 @@
+{
+  "name": "@compliance/tool-aml-sweeps",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "dependencies": {
+    "cordis": "^3.0.0"
+  }
+}

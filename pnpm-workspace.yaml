@@ -1,0 +1,5 @@
+packages:
+  - 'packages/**'
+  - 'apps/**'
+minimumReleaseAgeExclude:
+  - '@nanmicoder/dsh-agent-teams@0.1.15'

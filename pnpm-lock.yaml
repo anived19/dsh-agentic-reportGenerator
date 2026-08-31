@@ -1,0 +1,337 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      '@nanmicoder/dsh-agent-teams':
+        specifier: ^0.1.15
+        version: 0.1.15(react@18.3.1)
+      cordis:
+        specifier: ^3.0.0
+        version: 3.18.1
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.43
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
+  packages/compliance/tool-aml-sweeps:
+    dependencies:
+      cordis:
+        specifier: ^3.0.0
+        version: 3.18.1
+
+  packages/finoscale/entity-guard:
+    dependencies:
+      cordis:
+        specifier: ^3.0.0
+        version: 3.18.1
+
+  packages/finoscale/tool-finoscale-apis:
+    dependencies:
+      cordis:
+        specifier: ^3.0.0
+        version: 3.18.1
+
+  packages/finoscale/tool-render-pdf:
+    dependencies:
+      cordis:
+        specifier: ^3.0.0
+        version: 3.18.1
+
+  packages/orchestrator:
+    dependencies:
+      '@nanmicoder/dsh-agent-teams':
+        specifier: ^0.1.15
+        version: 0.1.15(react@18.3.1)
+      cordis:
+        specifier: ^3.0.0
+        version: 3.18.1
+
+  packages/scoring/dynamic-scoring-plugin:
+    dependencies:
+      cordis:
+        specifier: ^3.0.0
+        version: 3.18.1
+
+packages:
+
+  '@cordisjs/core@3.18.1':
+    resolution: {integrity: sha512-yRuATOamFxeD1ztE2L3o1SaHuT2zw5DTXijQYxt9azVNeILbvtomfGG6sLZegrynJO9XZbNvXbOlQ7LBJDOlAg==}
+
+  '@cordisjs/loader@0.13.1':
+    resolution: {integrity: sha512-YGw22gT1F/jXT1UeWMjIavt7WHMfEmKve83v4PTg63SW4eC2s89ivsN4RQWi5YWe0LQNNg8LItL66FeEcgQS5w==}
+    peerDependencies:
+      '@cordisjs/core': ^3.18.1
+
+  '@cordisjs/logger@0.3.3':
+    resolution: {integrity: sha512-UcyZRXAL86YLAEEta+fxJM1CcDanJvoIMD9ywCyP2AZJuib68UynENGTFo4mYkeg+8WMXrlA/aNNwENMiLUlXA==}
+    peerDependencies:
+      '@cordisjs/core': ^3.17.1
+
+  '@cordisjs/schema@0.1.1':
+    resolution: {integrity: sha512-AYTSyEXEASO6uVHqXBHIId+8OGFs0idtFoj3q7qee9J7OGcMjVEUsrsdiP9SnmzTR4ea17esShledUC50fco1g==}
+    peerDependencies:
+      '@cordisjs/core': ^3.17.0
+
+  '@cordisjs/timer@0.3.2':
+    resolution: {integrity: sha512-frdIvc+1AqKVHMWnNacqqZ2Cm52FfoYKPpBQ+kZgr/cFs7HXDKqetL35CLy/EZAF22l/6VTvpQOYUwS6tvVJZA==}
+    peerDependencies:
+      '@cordisjs/core': ^3.12.0
+
+  '@nanmicoder/dsh-agent-teams@0.1.15':
+    resolution: {integrity: sha512-TfyzwBe4yToJmUGLvJq+iqgxv8HkWCOdmdPNAs0LwX5Do9RMHer1auPS29rorSqxwTF2jINcgokRq9CIa/q2Cg==}
+    engines: {node: ^22.19.0 || >=24}
+    peerDependencies:
+      '@deepseek-ai/cordis': ^4.0.2
+      '@deepseek-ai/dsh-agent': ^0.1.2-alpha.2
+      '@deepseek-ai/dsh-api-session-controller': ^0.1.2-alpha.2
+      '@deepseek-ai/dsh-client-connection': ^0.1.2-alpha.2
+      '@deepseek-ai/dsh-client-locale': ^0.1.2-alpha.2
+      '@deepseek-ai/dsh-client-store': ^0.1.2-alpha.2
+      '@deepseek-ai/dsh-client-ui-chat': ^0.1.2-alpha.2
+      '@deepseek-ai/dsh-client-ui-conversation': ^0.1.2-alpha.2
+      '@deepseek-ai/dsh-client-ui-layout': ^0.1.2-alpha.2
+      '@deepseek-ai/dsh-client-ui-model-selection': ^0.1.2-alpha.2
+      '@deepseek-ai/dsh-client-ui-primitives': ^0.1.2-alpha.2
+      '@deepseek-ai/dsh-client-ui-renderer': ^0.1.2-alpha.2
+      '@deepseek-ai/dsh-client-ui-session': ^0.1.2-alpha.2
+      '@deepseek-ai/dsh-client-ui-slots': ^0.1.2-alpha.2
+      '@deepseek-ai/dsh-commands': ^0.1.2-alpha.2
+      '@deepseek-ai/dsh-llm': ^0.1.2-alpha.2
+      '@deepseek-ai/dsh-session': ^0.1.2-alpha.2
+      '@deepseek-ai/dsh-session-projection': ^0.1.2-alpha.2
+      '@deepseek-ai/dsh-subagent': ^0.1.2-alpha.2
+      '@deepseek-ai/dsh-system-prompt': ^0.1.2-alpha.2
+      '@deepseek-ai/dsh-tools': ^0.1.2-alpha.2
+      '@deepseek-ai/dsh-util-values': ^0.1.2-alpha.2
+      '@deepseek-ai/schemastery': ^3.18.2
+      react: ^18.2.0
+    peerDependenciesMeta:
+      '@deepseek-ai/cordis':
+        optional: true
+      '@deepseek-ai/dsh-agent':
+        optional: true
+      '@deepseek-ai/dsh-api-session-controller':
+        optional: true
+      '@deepseek-ai/dsh-client-connection':
+        optional: true
+      '@deepseek-ai/dsh-client-locale':
+        optional: true
+      '@deepseek-ai/dsh-client-store':
+        optional: true
+      '@deepseek-ai/dsh-client-ui-chat':
+        optional: true
+      '@deepseek-ai/dsh-client-ui-conversation':
+        optional: true
+      '@deepseek-ai/dsh-client-ui-layout':
+        optional: true
+      '@deepseek-ai/dsh-client-ui-model-selection':
+        optional: true
+      '@deepseek-ai/dsh-client-ui-primitives':
+        optional: true
+      '@deepseek-ai/dsh-client-ui-renderer':
+        optional: true
+      '@deepseek-ai/dsh-client-ui-session':
+        optional: true
+      '@deepseek-ai/dsh-client-ui-slots':
+        optional: true
+      '@deepseek-ai/dsh-commands':
+        optional: true
+      '@deepseek-ai/dsh-llm':
+        optional: true
+      '@deepseek-ai/dsh-session':
+        optional: true
+      '@deepseek-ai/dsh-session-projection':
+        optional: true
+      '@deepseek-ai/dsh-subagent':
+        optional: true
+      '@deepseek-ai/dsh-system-prompt':
+        optional: true
+      '@deepseek-ai/dsh-tools':
+        optional: true
+      '@deepseek-ai/dsh-util-values':
+        optional: true
+      '@deepseek-ai/schemastery':
+        optional: true
+      react:
+        optional: true
+
+  '@standard-schema/spec@1.1.0':
+    resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
+
+  '@types/node@20.19.43':
+    resolution: {integrity: sha512-6oYBAi5ikg4Pl+kGsoYtawUMBT2zZMCvPNF7pVLnHZfd1zf38DRiWn/gT01RYCdUqkv7Fhr+C9ot4/tb+2sVvA==}
+
+  argparse@2.0.1:
+    resolution: {integrity: sha512-8+9WqebbFzpX9OR+Wa6O29asIogeRMzcGtAINdpMHHyAg10f05aSFVBbcEqGf/PXw1EjAZ+q2/bEBg3DvurK3Q==}
+
+  cac@6.7.14:
+    resolution: {integrity: sha512-b6Ilus+c3RrdDk+JhLKUAQfzzgLEPy6wcXqS7f/xe1EETvsDP6GORG7SFuOs6cID5YkqchW/LXZbX5bc8j7ZcQ==}
+    engines: {node: '>=8'}
+
+  cordis@3.18.1:
+    resolution: {integrity: sha512-9IbthFbFBVJ15WBDNPqHdl59TyEAMNWxF1Dxsdi14625ePQkMX35WvcqgGno0BcXlpXDbUaBZgQ+jfBYT+uuSQ==}
+    engines: {node: ^18.0.0 || >=20.0.0}
+    hasBin: true
+
+  cosmokit@1.8.1:
+    resolution: {integrity: sha512-PDBv4l90xZKrUsZ0vtoycgZpO/j4iFsqJXrAxsyBDsnQRI7ZMJXIjgDJsKNjd5L8jnVnnlrDCdhkFbTncgCVjQ==}
+
+  dotenv@16.6.1:
+    resolution: {integrity: sha512-uBq4egWHTcTt33a72vpSG0z3HnPuIl6NqYcTrKEg2azoEyl2hpW0zqlxysq2pK9HlDIHyHyakeYaYnSAwd8bow==}
+    engines: {node: '>=12'}
+
+  has-flag@4.0.0:
+    resolution: {integrity: sha512-EykJT/Q1KjTWctppgIAgfSO0tKVuZUjhgMr17kqTumMl6Afv3EISleU7qZUzoXDFTAHTDC4NOoG/ZxU3EvlMPQ==}
+    engines: {node: '>=8'}
+
+  js-tokens@4.0.0:
+    resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
+
+  js-yaml@4.3.2:
+    resolution: {integrity: sha512-SFNOvSJ+Dgf/9An904Yx+CgSlIPCkIpao4qo51lpee25TIRejdH3rhR4EZMGoNx3/TP3O+wzWuiTFl4sqbltzA==}
+    hasBin: true
+
+  kleur@4.1.5:
+    resolution: {integrity: sha512-o+NO+8WrRiQEE4/7nwRJhN1HWpVmJm511pBHUxPLtp0BUISzlBplORYSmTclCnJvQq2tKu/sgl3xVpkc7ZWuQQ==}
+    engines: {node: '>=6'}
+
+  loose-envify@1.4.0:
+    resolution: {integrity: sha512-lyuxPGr/Wfhrlem2CL/UcnUc1zcqKAImBDzukY7Y5F/yQiNdko6+fRLevlw1HgMySw7f611UIY408EtxRSoK3Q==}
+    hasBin: true
+
+  object-inspect@1.13.4:
+    resolution: {integrity: sha512-W67iLl4J2EXEGTbfeHCffrjDfitvLANg0UlX3wFUUSTx92KXRFegMHUVgSqE+wvhAbi4WqjGg9czysTV2Epbew==}
+    engines: {node: '>= 0.4'}
+
+  react@18.3.1:
+    resolution: {integrity: sha512-wS+hAgJShR0KhEvPJArfuPVN1+Hz1t0Y6n5jLrGQbkb4urgPE/0Rve+1kMB1v/oWgHgm4WIcV+i7F2pTVj+2iQ==}
+    engines: {node: '>=0.10.0'}
+
+  reggol@1.7.1:
+    resolution: {integrity: sha512-0Vr1vRYDFnsA14BipkHRn3+4FxlZxQJ4VQG2pFE2obSrR68hTHVbbQzS3/ZAHNb6l/+ThaJrc5BPgrYDM3yNyg==}
+
+  schemastery@3.18.0:
+    resolution: {integrity: sha512-Jw2uxjoyyqc/yeurmChUEc/jbi8GsrdXV/KmqRUDZXJAXAmrJiPsz8vKa17l/VckyzljHZ9oGaul443CQiXxtA==}
+
+  supports-color@8.1.1:
+    resolution: {integrity: sha512-MpUEN2OodtUzxvKQl72cUF7RQ5EiHsGvSsVG0ia9c5RbWGL2CI4C7EpPS8UTBIplnlzZiNuV56w+FuNxy3ty2Q==}
+    engines: {node: '>=10'}
+
+  typescript@5.9.3:
+    resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
+    engines: {node: '>=14.17'}
+    hasBin: true
+
+  undici-types@6.21.0:
+    resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
+
+snapshots:
+
+  '@cordisjs/core@3.18.1':
+    dependencies:
+      cosmokit: 1.8.1
+
+  '@cordisjs/loader@0.13.1(@cordisjs/core@3.18.1)':
+    dependencies:
+      '@cordisjs/core': 3.18.1
+      cosmokit: 1.8.1
+      dotenv: 16.6.1
+      js-yaml: 4.3.2
+
+  '@cordisjs/logger@0.3.3(@cordisjs/core@3.18.1)':
+    dependencies:
+      '@cordisjs/core': 3.18.1
+      cosmokit: 1.8.1
+      reggol: 1.7.1
+
+  '@cordisjs/schema@0.1.1(@cordisjs/core@3.18.1)':
+    dependencies:
+      '@cordisjs/core': 3.18.1
+      cosmokit: 1.8.1
+      schemastery: 3.18.0
+
+  '@cordisjs/timer@0.3.2(@cordisjs/core@3.18.1)':
+    dependencies:
+      '@cordisjs/core': 3.18.1
+      cosmokit: 1.8.1
+
+  '@nanmicoder/dsh-agent-teams@0.1.15(react@18.3.1)':
+    optionalDependencies:
+      react: 18.3.1
+
+  '@standard-schema/spec@1.1.0': {}
+
+  '@types/node@20.19.43':
+    dependencies:
+      undici-types: 6.21.0
+
+  argparse@2.0.1: {}
+
+  cac@6.7.14: {}
+
+  cordis@3.18.1:
+    dependencies:
+      '@cordisjs/core': 3.18.1
+      '@cordisjs/loader': 0.13.1(@cordisjs/core@3.18.1)
+      '@cordisjs/logger': 0.3.3(@cordisjs/core@3.18.1)
+      '@cordisjs/schema': 0.1.1(@cordisjs/core@3.18.1)
+      '@cordisjs/timer': 0.3.2(@cordisjs/core@3.18.1)
+      cac: 6.7.14
+      cosmokit: 1.8.1
+      kleur: 4.1.5
+      reggol: 1.7.1
+
+  cosmokit@1.8.1: {}
+
+  dotenv@16.6.1: {}
+
+  has-flag@4.0.0: {}
+
+  js-tokens@4.0.0:
+    optional: true
+
+  js-yaml@4.3.2:
+    dependencies:
+      argparse: 2.0.1
+
+  kleur@4.1.5: {}
+
+  loose-envify@1.4.0:
+    dependencies:
+      js-tokens: 4.0.0
+    optional: true
+
+  object-inspect@1.13.4: {}
+
+  react@18.3.1:
+    dependencies:
+      loose-envify: 1.4.0
+    optional: true
+
+  reggol@1.7.1:
+    dependencies:
+      cosmokit: 1.8.1
+      object-inspect: 1.13.4
+      supports-color: 8.1.1
+
+  schemastery@3.18.0:
+    dependencies:
+      '@standard-schema/spec': 1.1.0
+      cosmokit: 1.8.1
+
+  supports-color@8.1.1:
+    dependencies:
+      has-flag: 4.0.0
+
+  typescript@5.9.3: {}
+
+  undici-types@6.21.0: {}
