@@ -31,12 +31,6 @@ importers:
         specifier: ^3.0.0
         version: 3.18.1
 
-  packages/finoscale/tool-finoscale-apis:
-    dependencies:
-      cordis:
-        specifier: ^3.0.0
-        version: 3.18.1
-
 packages:
 
   '@agentclientprotocol/sdk@1.4.0':

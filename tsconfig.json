@@ -3,9 +3,6 @@
   "references": [
     {
       "path": "./packages/finoscale/entity-guard"
-    },
-    {
-      "path": "./packages/finoscale/tool-finoscale-apis"
     }
   ]
 }
