@@ -25,7 +25,7 @@ os.environ["DSH_TELEMETRY_DISABLED"] = "1"
 
 from harness.dsh_orchestrator import run_dsh_orchestrator
 from harness.intake import detect_report_type, extract_editorial_goal, extract_intake_priors
-from tools.pdf_tools import compile_pdf
+
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("main")
@@ -58,7 +58,7 @@ def generate_report(user_query: str, run_aml: bool = False) -> None:
     resumable_session_id = f"dsh_{int(time.time() * 1000)}"
     for attempt in range(1, max_session_retries + 1):
         try:
-            agent_state, report = run_dsh_orchestrator(
+            agent_state, pdf_path = run_dsh_orchestrator(
                 user_query=user_query,
                 initial_company_ref=company_reference,
                 report_type=report_type,
@@ -77,19 +77,21 @@ def generate_report(user_query: str, run_aml: bool = False) -> None:
             )
             time.sleep(60)
 
-    print(f"      -> Resolved ticker: {report.ticker} ({report.company_name})", flush=True)
+    print(f"      -> Resolved ticker: {agent_state.ticker} ({agent_state.company_name})", flush=True)
     print(f"      -> Completed in {agent_state.turn} turn(s) with {len(agent_state.tool_log)} tool call(s)", flush=True)
     print(f"      -> Telemetry: {agent_state.telemetry.gemini_calls} Gemini calls, "
           f"{agent_state.telemetry.tavily_calls}/{agent_state.telemetry.tavily_calls_budget} Tavily calls, "
           f"{agent_state.telemetry.wall_clock_seconds}s wall clock", flush=True)
 
-    if report.report_spec:
-        print(f"      -> ReportSpec: {len(report.report_spec.sections)} sections configured. "
-              f"Rationale: {report.report_spec.rationale}", flush=True)
+    if agent_state.report_spec:
+        print(f"      -> ReportSpec: {len(agent_state.report_spec.sections)} sections configured. "
+              f"Rationale: {agent_state.report_spec.rationale}", flush=True)
 
-    print("[3/3] Rendering PDF...", flush=True)
-    pdf_path = compile_pdf(report)
-    print(f"\nDone. Report saved to: {pdf_path}\n", flush=True)
+    print("[3/3] PDF rendered via Agent tool.", flush=True)
+    if pdf_path:
+        print(f"\nDone. Report saved to: {pdf_path}\n", flush=True)
+    else:
+        print("\nWarning: Report PDF path was not returned by the agent.\n", flush=True)
 
 
 def main() -> None:

@@ -3,6 +3,13 @@
   "version": "1.0.0",
   "main": "src/index.ts",
   "dependencies": {
-    "cordis": "^3.0.0"
+    "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/dsh-tools": "^0.1.2-alpha.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.3"
   }
 }

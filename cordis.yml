@@ -35,8 +35,8 @@
       {{cwd}}.
 
       HARD RULES:
-        - ZERO-TEXT PROTOCOL: You must NEVER output conversational commentary, explanations, or prose during execution turns.
-        - Every single response MUST contain at least one valid tool call until `finalize_report` is reached.
+        - ZERO-TEXT PROTOCOL: You must NEVER output conversational commentary, explanations, or prose during execution turns, EXCEPT for one planning message before your first tool call. Every turn after your first tool call must contain only tool calls.
+        - Every single response after the initial plan MUST contain at least one valid tool call until `finalize_report` is reached.
 
       You inspect the user's request and the current state, and decide which MCP
       tools to call, in what sequence, and how the final report should be
@@ -125,6 +125,7 @@
       25. mcp__finoscale__compare_source_data(yfinance_data, moneycontrol_data):
       Cross-checks standard yfinance data against local Moneycontrol data to detect mismatches.
 
+      26. mcp__finoscale__render_report_pdf(): Renders the final PDF report and returns its path.
 
       HARD RULES & 5-PHASE EXECUTION FLOW:
 
@@ -146,13 +147,14 @@
       any relevant web filings or company announcements.
 
       5. CRO SELF-AUDIT & FINALIZATION: Call audit_draft to verify numbers against
-      ground-truth data, then call plan_report_format, validate_data, and finalize_report.
+      ground-truth data, then call plan_report_format, validate_data, finalize_report, and finally mcp__finoscale__render_report_pdf.
 
-      6. SUBAGENT CREDIT SCORING (MANDATORY — ALWAYS RUN, WITH OR WITHOUT AN ANNUAL REPORT): Call fetch_annual_report, then call build_section_index() regardless of its result — it transparently falls back to your already-gathered market/compliance/sentiment data if no report PDF exists. Then spawn subagents sequentially for all 4 categories exactly as below. This step is never optional and is never skipped due to a missing filing.
+      6. SUBAGENT CREDIT SCORING: You may use tool-subagent-scoring to evaluate credit hygiene. If you choose to run credit scoring, you must call fetch_annual_report and then build_section_index(). Then spawn subagents for the categories you deem necessary.
       CRITICAL: The ONLY valid category strings are exactly: "Finances", "Business & Management", "Hygiene", "Banking". Do NOT paraphrase, rename, abbreviate, or invent category names — any other string is rejected immediately.
-      - Step A: Call mcp__finoscale__get_category_text(category="Finances") — use the exact string.
-      - Step B: Use tool-subagent-scoring to spawn a subagent and pass the bounded text. Instruct it to evaluate the text and invoke submit_category_result with the SAME exact category string.
-      - Step C: Wait for the subagent's result.
+      To score a category:
+      - Call mcp__finoscale__get_category_text(category="<exact_string>")
+      - Use tool-subagent-scoring to spawn a subagent and pass the text, instructing it to evaluate and call submit_category_result with the SAME exact category string.
+      - Wait for the subagent's result.
 
       7. ANALYST REVIEW: If credit scoring was performed, you MUST call mcp__finoscale__submit_for_analyst_review and wait for the human response to be injected. Do not call finalize_report until approved.
 
@@ -202,7 +204,7 @@
 - id: tool-web
   disabled: true
 - id: tool-goal
-  disabled: true
+  disabled: false
 - id: tool-skill
   disabled: false
 - id: tool-jobs
@@ -215,6 +217,8 @@
       config:
         stateDir: .agent-teams
         memberProvider: spawn
+    - id: entity-guard
+      name: './packages/finoscale/entity-guard'
     - id: finoscale-mcp
       name: '@deepseek-ai/dsh-mcp-client'
       config:

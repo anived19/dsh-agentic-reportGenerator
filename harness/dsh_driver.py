@@ -29,7 +29,7 @@ from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv(), override=True)
 
 from config import settings
-from harness.synthesis import render_aml_markdown, run_chief_editor
+
 from schemas import (
     AgentState,
     AgentStatus,
@@ -37,7 +37,6 @@ from schemas import (
     AMLScreeningResult,
     AMLSeverity,
     CitedClaim,
-    FinalReport,
     MarketMetrics,
     ReportSpec,
     ReportType,
@@ -48,7 +47,7 @@ from schemas import (
     ToolCallRecord,
     ValidationResult,
 )
-from tools.finance_tools import assemble_market_metrics
+
 
 logger = logging.getLogger(__name__)
 
@@ -163,18 +162,11 @@ def run_dsh_orchestrator(
         )
 
     task_prompt = (
-        f"/agent-teams Produce a financial research report for {initial_company_ref or user_query}.\n\n"
-        f"Create a team. Add two members: 'market-data' (role: financial data analyst) and "
-        f"'aml-media' (role: compliance and sentiment analyst). Create two tasks with no "
-        f"dependencies between them — one for market-data covering price snapshot, valuation, "
-        f"fundamentals, technicals, ownership, sector metrics, and peer benchmarking; one for "
-        f"aml-media covering the structured AML sweep and adverse-media/news search — so they "
-        f"can run concurrently. Then add a 'synthesis' member and create a task for it that "
-        f"depends on both prior tasks: build the section index, then spawn four scorer members "
-        f"('finance-scorer', 'banking-scorer', 'business-scorer', 'hygiene-scorer') each with "
-        f"one task depending on the section-index task, using the credit-report-format skill to "
-        f"assemble the final 13-section report. Wait for every task to complete, then present the "
-        f"consolidated markdown and call finalize_report.\n"
+        f"Goal: Produce a financial research report for {initial_company_ref or user_query}.\n\n"
+        f"You have access to the agent_teams_* tools to organize your work. "
+        f"Design a team structure and task DAG that makes sense for gathering market data, "
+        f"performing compliance checks, computing metrics, and synthesizing the final report. "
+        f"Coordinate your members and wait for them to finish, then present the consolidated markdown and call finalize_report.\n"
     )
 
     # 3. Setup Process Environment
@@ -190,7 +182,7 @@ def run_dsh_orchestrator(
 
     npx_bin = _find_npx_executable()
     cordis_path = Path("cordis.yml").resolve()
-    cmd = [npx_bin, "@deepseek-ai/dsh@0.1.2-alpha.2", "--profile", "headless", "--patch", str(cordis_path), task_prompt]
+    cmd = [npx_bin, "@deepseek-ai/dsh@0.1.2-alpha.2", "run", "--profile", "headless", "--patch", str(cordis_path), task_prompt]
 
     print(f"\n[DSH Harness] Spawning DeepSeek Harness Agent Runtime (Session: {session_id})...")
     print(f"  -> Model Route: google:gemini-3.5-flash-lite (via @deepseek-ai/dsh-llm-pi-ai)")
@@ -396,63 +388,19 @@ def run_dsh_orchestrator(
         except Exception as peer_exc:
             logger.debug("Automatic peer resolution fallback failed for %s: %s", ticker, peer_exc)
 
-    # 7. Assemble Grounded MarketMetrics from DSH Data (Zero Re-Fetching)
-    market_metrics = assemble_market_metrics(ticker, market_data)
-
-    # 8. Stage 3: Chief Editor Synthesis (Single-Shot Grounded Call)
-    print("\n[Chief Editor] Synthesizing final research report from DSH empirical findings...")
-    markdown_body = run_chief_editor(
-        market_metrics=market_metrics,
-        sentiment_findings=sentiment_findings,
-        report_type=report_type,
-        report_spec=report_spec,
-        editorial_goal=state.editorial_goal,
-        aml_result=aml_result if run_aml else None,
-        score_results=score_results,
-    )
-    telemetry.gemini_calls += 1
-
-    if run_aml and aml_result:
-        aml_md = render_aml_markdown(aml_result)
-        markdown_body = markdown_body + "\n\n" + aml_md
-        
-    if score_results:
-        from harness.synthesis import render_credit_scoring_markdown
-        score_md = render_credit_scoring_markdown(score_results)
-        if score_md:
-            markdown_body = markdown_body + "\n\n" + score_md
-
-    # 9. KPI Cards Assembly
-    kpi_cards: list[dict[str, str]] = []
-    if market_metrics.current_price_formatted:
-        kpi_cards.append({"label": "Current Price", "value": market_metrics.current_price_formatted, "note": "Market close"})
-    if market_metrics.market_cap_formatted:
-        kpi_cards.append({"label": "Market Cap", "value": market_metrics.market_cap_formatted, "note": "Scale"})
-    if market_metrics.pe_ratio_formatted:
-        kpi_cards.append({"label": "P/E Ratio", "value": market_metrics.pe_ratio_formatted, "note": "TTM multiple"})
-    if market_metrics.roe_formatted:
-        kpi_cards.append({"label": "Return on Equity", "value": market_metrics.roe_formatted, "note": "Profitability"})
-    for cm_name, cm_val in state.custom_metrics.items():
-        if isinstance(cm_val, dict) and cm_val.get("formatted_value") and cm_val.get("status") == "ok":
-            kpi_cards.append({
-                "label": cm_name.replace("_", " ").title(),
-                "value": str(cm_val["formatted_value"]),
-                "note": "Custom Metric",
-            })
-
-    final_report = FinalReport(
-        ticker=ticker,
-        company_name=company_name,
-        report_type=report_type,
-        editorial_goal=state.editorial_goal,
-        markdown_body=markdown_body,
-        market_metrics=market_metrics,
-        sentiment_findings=sentiment_findings,
-        aml_result=aml_result,
-        report_spec=report_spec,
-        telemetry=telemetry,
-        kpi_cards=kpi_cards[:6],
-    )
+    # 7. Extract PDF path from the final tool log (render_report_pdf)
+    pdf_path = None
+    for call in reversed(state.tool_log):
+        if call.tool_name == "render_report_pdf" and call.ok:
+            try:
+                res = json.loads(call.result) if isinstance(call.result, str) else call.result
+                pdf_path = res.get("pdf_path")
+            except Exception:
+                pass
+            break
+            
+    if not pdf_path:
+        logger.warning("Agent finished but no PDF path was returned by render_report_pdf.")
 
     # 10. Write Trace JSON File
     try:
@@ -481,4 +429,4 @@ def run_dsh_orchestrator(
     except Exception as exc:
         logger.warning("Could not write trace file: %s", exc)
 
-    return state, final_report
+    return state, pdf_path
