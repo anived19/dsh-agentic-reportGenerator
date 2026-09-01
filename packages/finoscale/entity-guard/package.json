@@ -1,6 +1,7 @@
 {
   "name": "@finoscale/entity-guard",
   "version": "1.0.0",
+  "type": "module",
   "main": "src/index.ts",
   "dependencies": {
     "@deepseek-ai/cordis": "^4.0.2",

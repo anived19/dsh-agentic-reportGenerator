@@ -1,0 +1,70 @@
+{
+  "name": "tcs-research-team-v2",
+  "id": "tcs-research-team-v2",
+  "description": "Produce a comprehensive financial research and compliance report for TCS (Tata Consultancy Services) using AgentTeams.",
+  "captainSessionId": "session-de7925be-8548-4836-ac2d-b1ce2ed6d56d",
+  "createdAt": 1788180588710,
+  "members": [
+    {
+      "id": "",
+      "name": "financial_researcher",
+      "role": "Financial Researcher",
+      "provider": "google",
+      "model": "gemini-3.5-flash-lite",
+      "joinedAt": 1788180589924,
+      "status": "idle"
+    },
+    {
+      "id": "",
+      "name": "compliance_officer",
+      "role": "Compliance & AML Screening Officer",
+      "provider": "google",
+      "model": "gemini-3.5-flash-lite",
+      "joinedAt": 1788180591051,
+      "status": "idle"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "t1",
+      "subject": "Gather TCS Financial & Valuation Data",
+      "description": "Resolve TCS ticker, fetch price snapshot, valuation multiples, fundamentals, quarterly financials, technicals, ownership, and SaaS/Tech metrics.",
+      "status": "pending",
+      "assignee": "financial_researcher",
+      "dependencies": [],
+      "attempt": 0,
+      "createdAt": 1788180592327,
+      "updatedAt": 1788180592327,
+      "kind": "work"
+    },
+    {
+      "id": "t2",
+      "subject": "Run AML and Adverse Media Screening for TCS",
+      "description": "Run structured AML sweep and search adverse media for Tata Consultancy Services (TCS).",
+      "status": "pending",
+      "assignee": "compliance_officer",
+      "dependencies": [],
+      "attempt": 0,
+      "createdAt": 1788180593456,
+      "updatedAt": 1788180593456,
+      "kind": "work"
+    },
+    {
+      "id": "t3",
+      "subject": "Validate Data and Render PDF Report",
+      "description": "Validate gathered data against report requirements, plan report format, and render the final PDF report.",
+      "status": "pending",
+      "dependencies": [
+        "t1",
+        "t2"
+      ],
+      "attempt": 0,
+      "createdAt": 1788180594763,
+      "updatedAt": 1788180594763,
+      "kind": "work"
+    }
+  ],
+  "taskSeq": 3,
+  "phase": "staged",
+  "planReviewState": "awaiting_review"
+}

@@ -134,11 +134,13 @@
       1. RESOLUTION: If the ticker is not yet resolved, call resolve_entity. If >1 candidate is returned, you MUST call ask_user immediately.
       
       2. DELEGATION (MANDATORY): You are the Orchestrator. You MUST NOT call data-gathering tools (like get_price_snapshot, get_fundamentals, scrape_moneycontrol, run_structured_aml_sweep, etc) directly. 
-      Instead, you MUST call `agent_teams_create` to assemble a team of specialized subagents.
+      Instead, you MUST call `agent_teams_create` to assemble a team of specialized subagents. You MUST call it with `approval="automatic"` to start immediately. Do NOT ask the user for review, permission, or approval for your plan.
       
       3. DAG PLANNING: Use `agent_teams_spawn` and `agent_teams_create_task` to assign the subagents to gather financial data, run compliance checks, and evaluate credit scoring in parallel. 
       
-      4. FINALIZATION: Once all subagents have completed their tasks, gather their findings, call validate_data, and then call mcp__finoscale__render_report_pdf to generate the final PDF.
+      4. MONITORING (CRITICAL): Once tasks are created, you MUST call `agent_teams_status` to monitor their progress. If tasks are still running, your NEXT turn MUST also call `agent_teams_status`. You MUST continuously poll `agent_teams_status` in a loop (one call per turn) until all tasks are completed. Do NOT yield a turn without a tool call or the session will crash!
+      
+      5. FINALIZATION: Once `agent_teams_status` shows all subagents have completed their tasks, gather their findings, call validate_data, and then call mcp__finoscale__render_report_pdf to generate the final PDF.
 
     rules:
       - name: "Entity Disambiguation"

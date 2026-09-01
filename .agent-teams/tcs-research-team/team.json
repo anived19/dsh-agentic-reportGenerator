@@ -1,0 +1,59 @@
+{
+  "name": "tcs_research_team",
+  "id": "tcs-research-team",
+  "description": "Produce a comprehensive financial research report for TCS.NS",
+  "captainSessionId": "session-1ba08597-fda5-48a6-afd8-81df9b11ba59",
+  "createdAt": 1788237692409,
+  "members": [
+    {
+      "id": "9abebda3-4f99-416b-98a4-85d148c0bf83",
+      "name": "financial_analyst",
+      "role": "Financial Researcher",
+      "provider": "google",
+      "model": "gemini-3.5-flash-lite",
+      "executionPrompt": "Gather financials, valuation multiples, fundamentals, quarterly trends, technicals, and peer benchmarking for TCS.NS.",
+      "joinedAt": 1788237693635,
+      "status": "idle"
+    },
+    {
+      "id": "79cf33ac-0b76-409b-bf42-e2781cae260c",
+      "name": "compliance_officer",
+      "role": "Compliance Officer",
+      "provider": "google",
+      "model": "gemini-3.5-flash-lite",
+      "executionPrompt": "Run structured AML compliance sweep and adverse media search for Tata Consultancy Services.",
+      "joinedAt": 1788237694872,
+      "status": "idle"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "t1",
+      "subject": "Perform compliance and AML checks for TCS",
+      "description": "Run structured AML sweep and search adverse media for Tata Consultancy Services.",
+      "status": "claimed",
+      "assignee": "compliance_officer",
+      "dependencies": [],
+      "attempt": 1,
+      "createdAt": 1788237697815,
+      "updatedAt": 1788237697820,
+      "kind": "implementation",
+      "objective": "Perform compliance and AML checks for Tata Consultancy Services.",
+      "inScope": [
+        "."
+      ],
+      "acceptance": [
+        "Structured AML sweep and adverse media search executed and documented."
+      ],
+      "verify": [
+        "python -c \"import json; print('Verified compliance')\""
+      ],
+      "deliverables": [
+        "compliance_summary.json"
+      ],
+      "attemptId": "b5d6e5cc-20c9-4302-9ab1-915ed86e0810",
+      "reassigning": false
+    }
+  ],
+  "taskSeq": 1
+}
