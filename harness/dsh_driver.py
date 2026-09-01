@@ -59,7 +59,7 @@ def ensure_dsh_environment() -> None:
     settings_file = dsh_dir / "settings.yaml"
 
     settings_content = (
-        f"model: google:{settings.gemini_model}\n"
+        "model: google:gemini-3.5-flash-lite\n"
         "llm-pi-ai:\n"
         "  providers:\n"
         "    google: {}\n"
@@ -182,15 +182,10 @@ def run_dsh_orchestrator(
 
     npx_bin = _find_npx_executable()
     cordis_path = Path("cordis.yml").resolve()
-    cordis_content = cordis_path.read_text(encoding="utf-8")
-    cordis_content = re.sub(r"model:\s*gemini-3\.5-flash-lite", f"model: {settings.gemini_model}", cordis_content)
-    run_cordis_path = session_dir / "cordis_run.yml"
-    run_cordis_path.write_text(cordis_content, encoding="utf-8")
-    
-    cmd = [npx_bin, "@deepseek-ai/dsh@0.1.2-alpha.2", "--profile", "headless", "--patch", str(run_cordis_path), task_prompt]
+    cmd = [npx_bin, "@deepseek-ai/dsh@0.1.2-alpha.2", "--profile", "headless", "--patch", str(cordis_path), task_prompt]
 
     print(f"\n[DSH Harness] Spawning DeepSeek Harness Agent Runtime (Session: {session_id})...")
-    print(f"  -> Model Route: google:{settings.gemini_model} (via @deepseek-ai/dsh-llm-pi-ai)")
+    print(f"  -> Model Route: google:gemini-3.5-flash-lite (via @deepseek-ai/dsh-llm-pi-ai)")
     print(f"  -> Tools: Finoscale MCP stdio server (@deepseek-ai/dsh-mcp-client)")
     print(f"  -> ReAct Loop: Autonomous multi-turn reasoning owned by DSH\n")
 

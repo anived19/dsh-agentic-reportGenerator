@@ -187,6 +187,8 @@
            - `await tools.agent_teams_create_task({ subject, description,
              dependencies: [...], assignee })` for each category, plus one
              synthesis task whose `dependencies` list every category task's id.
+             CRITICAL CONCURRENCY RULE: To avoid Gemini API rate limits, you MUST chain your tasks sequentially. 
+             Task 2 must depend on Task 1, Task 3 on Task 2, etc. DO NOT allow tasks to run in parallel.
          Do NOT ask the user for review, permission, or approval for your plan.
 
       3. MONITORING (this is what used to burn one LLM call per poll): write ONE
