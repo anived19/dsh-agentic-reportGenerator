@@ -1,0 +1,98 @@
+{
+  "name": "tcs-research-team-1788243974280",
+  "id": "tcs-research-team-1788243974280",
+  "description": "Produce a comprehensive financial research report and compliance audit for Tata Consultancy Services (TCS.NS).",
+  "captainSessionId": "session-a06c56b0-8709-47b8-8ec6-b885e9f569e1",
+  "createdAt": 1788243974283,
+  "members": [
+    {
+      "id": "03c3fd2f-bcae-4fb8-8dee-715d9a133cd2",
+      "name": "financials-analyst",
+      "role": "Gather price snapshot, valuation multiples, quarterly financials, technicals, and compute SaaS metrics.",
+      "provider": "google",
+      "model": "gemini-3.5-flash-lite",
+      "joinedAt": 1788243974292,
+      "status": "idle"
+    },
+    {
+      "id": "ae85f4fe-ca3e-4c4f-9d56-fd2360205f78",
+      "name": "compliance-analyst",
+      "role": "Run structured AML sweep, adverse media search, and ownership/board analysis.",
+      "provider": "google",
+      "model": "gemini-3.5-flash-lite",
+      "joinedAt": 1788243974318,
+      "status": "idle"
+    },
+    {
+      "id": "eb4c8c3c-7bbd-4e8b-a408-573d54b41f95",
+      "name": "peer-analyst",
+      "role": "Fetch peer tickers, scrape Moneycontrol data, and investigate financial anomalies.",
+      "provider": "google",
+      "model": "gemini-3.5-flash-lite",
+      "joinedAt": 1788243974340,
+      "status": "idle"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "t1",
+      "subject": "Gather core financial data",
+      "description": "Fetch price snapshot, valuation multiples, fundamentals, quarterly financials, and technicals for TCS.NS.",
+      "status": "completed",
+      "assignee": "financials-analyst",
+      "dependencies": [],
+      "attempt": 1,
+      "createdAt": 1788243974370,
+      "updatedAt": 1788243986226,
+      "kind": "work",
+      "attemptId": "d8e4164f-09d7-41f7-b353-d11356c58292",
+      "reassigning": false,
+      "output": "{\n  \"resolved_entity\": {\n    \"content\": [\n      {\n        \"type\": \"text\",\n        \"text\": \"{\\\"query\\\": \\\"TCS.NS\\\", \\\"resolved_ticker\\\": \\\"TCS.NS\\\", \\\"resolved_company_name\\\": \\\"Tata Consultancy Services\\\", \\\"status\\\": \\\"ALREADY_RESOLVED\\\", \\\"instruction\\\": \\\"Ticker is locked. Immediately call get_price_snapshot or get_fundamentals next.\\\"}\"\n      }\n    ]\n  },\n  \"price_snapshot\": {\n    \"content\": [\n      {\n        \"type\": \"text\",\n        \"text\": \"{\\\"ticker\\\": \\\"TCS.NS\\\", \\\"company_name\\\": \\\"TATA CONSULTANCY SERV LT\\\", \\\"currency\\\": \\\"INR\\\", \\\"sector\\\": \\\"Technology\\\", \\\"industry\\\": \\\"Information Technology Services\\\", \\\"current_price\\\": 2363.9, \\\"current_price_formatted\\\": \\\"2,363.90\\\", \\\"market_cap\\\": 8552796651520.0, \\\"market_cap_formatted\\\": \\\"Rs. 8.55 Lakh Cr\\\", \\\"fifty_day_ma\\\": 2257.48, \\\"fifty_day_ma_formatted\\\": \\\"2,257.48\\\", \\\"two_hundred_day_ma\\\": 2608.95, \\\"two_hundred_day_ma_formatted\\\": \\\"2,608.95\\\", \\\"outlook_high\\\": 2610.5, \\\"outlook_high_formatted\\\": \\\"2,610.50\\\", \\\"outlook_low\\\": 1982.6, \\\"outlook_low_formatted\\\": \\\"1,982.60\\\", \\\"outlook_price_trend\\\": [{\\\"date\\\": \\\"2026-03-04\\\", \\\"close\\\": 2587.8}, {\\\"date\\\": \\\"2026-03-05\\\", \\\"close\\\": 2578.8}, {\\\"date\\\": \\\"2026-03-06\\\", \\\"close\\\": 2557.6}, {\\\"date\\\": \\\"2026-03-09\\\", \\\"close\\\": 2527.4}, {\\\"date\\\": \\\"2026-03-10\\\", \\\"close\\\": 2513.1}, {\\\"date\\\": \\\"2026-03-11\\\", \\\"close\\\": 2464.9}, {\\\"date\\\": \\\"2026-03-12\\\", \\\"close\\\": 2442.4}, {\\\"date\\\": \\\"2026-03-13\\\", \\\"close\\\": 2410.5}, {\\\"date\\\": \\\"2026-03-16\\\", \\\"close\\\": 2409.2}, {\\\"date\\\": \\\"2026-03-17\\\", \\\"close\\\": 2391.7}, {\\\"date\\\": \\\"2026-03-18\\\", \\\"close\\\": 2440.8}, {\\\"date\\\": \\\"2026-03-19\\\", \\\"close\\\": 2356.0}, {\\\"date\\\": \\\"2026-03-20\\\", \\\"close\\\": 2390.6}, {\\\"date\\\": \\\"2026-03-23\\\", \\\"close\\\": 2383.8}, {\\\"date\\\": \\\"2026-03-24\\\", \\\"close\\\": 2398.8}, {\\\"date\\\": \\\"2026-03-25\\\", \\\"close\\\": 2377.4}, {\\\"date\\\": \\\"2026-03-27\\\", \\\"close\\\": 2389.8}, {\\\"date\\\": \\\"2026-03-30\\\", \\\"close\\\": 2358.9}, {\\\"date\\\": \\\"2026-04-01\\\", \\\"close\\\": 2408.2}, {\\\"date\\\": \\\"2026-04-02\\\", \\\"close\\\": 2450.7}, {\\\"date\\\": \\\"2026-04-06\\\", \\\"close\\\": 2473.9}, {\\\"date\\\": \\\"2026-04-07\\\", \\\"close\\\": 2539.8}, {\\\"date\\\": \\\"2026-04-08\\\", \\\"close\\\": 2559.2}, {\\\"date\\\": \\\"2026-04-09\\\", \\\"close\\\": 2589.0}, {\\\"date\\\": \\\"2026-04-10\\\", \\\"close\\\": 2524.3}, {\\\"date\\\": \\\"2026-04-13\\\", \\\"close\\\": 2472.6}, {\\\"date\\\": \\\"2026-04-15\\\", \\\"close\\\": 2554.9}, {\\\"date\\\": \\\"2026-04-16\\\", \\\"close\\\": 2576.9}, {\\\"date\\\": \\\"2026-04-17\\\", \\\"close\\\": 2581.5}, {\\\"date\\\": \\\"2026-04-20\\\", \\\"close\\\": 2579.6}, {\\\"date\\\": \\\"2026-04-21\\\", \\\"close\\\": 2610.5}, {\\\"date\\\": \\\"2026-04-22\\\", \\\"close\\\": 2538.5}, {\\\"date\\\": \\\"2026-04-23\\\", \\\"close\\\": 2521.8}, {\\\"date\\\": \\\"2026-04-24\\\", \\\"close\\\": 2396.9}, {\\\"date\\\": \\\"2026-04-27\\\", \\\"close\\\": 2447.6}, {\\\"date\\\": \\\"2026-04-28\\\", \\\"close\\\": 2444.7}, {\\\"date\\\": \\\"2026-04-29\\\", \\\"close\\\": 2474.7}, {\\\"date\\\": \\\"2026-04-30\\\", \\\"close\\\": 2473.9}, {\\\"date\\\": \\\"2026-05-01\\\", \\\"close\\\": 2473.9}, {\\\"date\\\": \\\"2026-05-04\\\", \\\"close\\\": 2431.3}, {\\\"date\\\": \\\"2026-05-05\\\", \\\"close\\\": 2427.3}, {\\\"date\\\": \\\"2026-05-06\\\", \\\"close\\\": 2435.4}, {\\\"date\\\": \\\"2026-05-07\\\", \\\"close\\\": 2401.4}, {\\\"date\\\": \\\"2026-05-08\\\", \\\"close\\\": 2394.4}, {\\\"date\\\": \\\"2026-05-11\\\", \\\"close\\\": 2392.9}, {\\\"date\\\": \\\"2026-05-12\\\", \\\"close\\\": 2300.3}, {\\\"date\\\": \\\"2026-05-13\\\", \\\"close\\\": 2272.8}, {\\\"date\\\": \\\"2026-05-14\\\", \\\"close\\\": 2246.0}, {\\\"date\\\": \\\"2026-05-15\\\", \\\"close\\\": 2264.0}, {\\\"date\\\": \\\"2026-05-18\\\", \\\"close\\\": 2283.2}, {\\\"date\\\": \\\"2026-05-19\\\", \\\"close\\\": 2327.1}, {\\\"date\\\": \\\"2026-05-20\\\", \\\"close\\\": 2327.4}, {\\\"date\\\": \\\"2026-05-21\\\", \\\"close\\\": 2327.2}, {\\\"date\\\": \\\"2026-05-22\\\", \\\"close\\\": 2317.3}, {\\\"date\\\": \\\"2026-05-25\\\", \\\"close\\\": 2308.2}, {\\\"date\\\": \\\"2026-05-26\\\", \\\"close\\\": 2276.2}, {\\\"date\\\": \\\"2026-05-27\\\", \\\"close\\\": 2284.2}, {\\\"date\\\": \\\"2026-05-28\\\", \\\"close\\\": 2284.2}, {\\\"date\\\": \\\"2026-05-29\\\", \\\"close\\\": 2258.9}, {\\\"date\\\": \\\"2026-06-01\\\", \\\"close\\\": 2297.4}, {\\\"date\\\": \\\"2026-06-02\\\", \\\"close\\\": 2446.9}, {\\\"date\\\": \\\"2026-06-03\\\", \\\"close\\\": 2241.7}, {\\\"date\\\": \\\"2026-06-04\\\", \\\"close\\\": 2241.0}, {\\\"date\\\": \\\"2026-06-05\\\", \\\"close\\\": 2198.9}, {\\\"date\\\": \\\"2026-06-08\\\", \\\"close\\\": 2151.4}, {\\\"date\\\": \\\"2026-06-09\\\", \\\"close\\\": 2151.0}, {\\\"date\\\": \\\"2026-06-10\\\", \\\"close\\\": 2153.9}, {\\\"date\\\": \\\"2026-06-11\\\", \\\"close\\\": 2135.6}, {\\\"date\\\": \\\"2026-06-12\\\", \\\"close\\\": 2161.4}, {\\\"date\\\": \\\"2026-06-15\\\", \\\"close\\\": 2162.0}, {\\\"date\\\": \\\"2026-06-16\\\", \\\"close\\\": 2199.0}, {\\\"date\\\": \\\"2026-06-17\\\", \\\"close\\\": 2223.0}, {\\\"date\\\": \\\"2026-06-18\\\", \\\"close\\\": 2203.3}, {\\\"date\\\": \\\"2026-06-19\\\", \\\"close\\\": 2125.0}, {\\\"date\\\": \\\"2026-06-22\\\", \\\"close\\\": 2127.8}, {\\\"date\\\": \\\"2026-06-23\\\", \\\"close\\\": 2059.6}, {\\\"date\\\": \\\"2026-06-24\\\", \\\"close\\\": 2109.0}, {\\\"date\\\": \\\"2026-06-25\\\", \\\"close\\\": 2094.7}, {\\\"date\\\": \\\"2026-06-26\\\", \\\"close\\\": 2094.7}, {\\\"date\\\": \\\"2026-06-29\\\", \\\"close\\\": 2097.9}, {\\\"date\\\": \\\"2026-06-30\\\", \\\"close\\\": 2031.5}, {\\\"date\\\": \\\"2026-07-01\\\", \\\"close\\\": 1982.6}, {\\\"date\\\": \\\"2026-07-02\\\", \\\"close\\\": 2068.1}, {\\\"date\\\": \\\"2026-07-03\\\", \\\"close\\\": 2093.5}, {\\\"date\\\": \\\"2026-07-06\\\", \\\"close\\\": 2057.6}, {\\\"date\\\": \\\"2026-07-07\\\", \\\"close\\\": 2096.1}, {\\\"date\\\": \\\"2026-07-08\\\", \\\"close\\\": 2057.5}, {\\\"date\\\": \\\"2026-07-09\\\", \\\"close\\\": 2049.5}, {\\\"date\\\": \\\"2026-07-10\\\", \\\"close\\\": 2069.0}, {\\\"date\\\": \\\"2026-07-13\\\", \\\"close\\\": 2181.5}, {\\\"date\\\": \\\"2026-07-14\\\", \\\"close\\\": 2200.6}, {\\\"date\\\": \\\"2026-07-15\\\", \\\"close\\\": 2189.2}, {\\\"date\\\": \\\"2026-07-16\\\", \\\"close\\\": 2201.0}, {\\\"date\\\": \\\"2026-07-17\\\", \\\"close\\\": 2269.0}, {\\\"date\\\": \\\"2026-07-20\\\", \\\"close\\\": 2251.1}, {\\\"date\\\": \\\"2026-07-21\\\", \\\"close\\\": 2221.1}, {\\\"date\\\": \\\"2026-07-22\\\", \\\"close\\\": 2208.3}, {\\\"date\\\": \\\"2026-07-23\\\", \\\"close\\\": 2242.9}, {\\\"date\\\": \\\"2026-07-24\\\", \\\"close\\\": 2254.3}, {\\\"date\\\": \\\"2026-07-27\\\", \\\"close\\\": 2295.6}, {\\\"date\\\": \\\"2026-07-28\\\", \\\"close\\\": 2398.0}, {\\\"date\\\": \\\"2026-07-29\\\", \\\"close\\\": 2446.6}, {\\\"date\\\": \\\"2026-07-30\\\", \\\"close\\\": 2431.8}, {\\\"date\\\": \\\"2026-07-31\\\", \\\"close\\\": 2365.6}, {\\\"date\\\": \\\"2026-08-03\\\", \\\"close\\\": 2473.7}, {\\\"date\\\": \\\"2026-08-04\\\", \\\"close\\\": 2460.0}, {\\\"date\\\": \\\"2026-08-05\\\", \\\"close\\\": 2413.0}, {\\\"date\\\": \\\"2026-08-06\\\", \\\"close\\\": 2373.0}, {\\\"date\\\": \\\"2026-08-07\\\", \\\"close\\\": 2452.7}, {\\\"date\\\": \\\"2026-08-10\\\", \\\"close\\\": 2425.7}, {\\\"date\\\": \\\"2026-08-11\\\", \\\"close\\\": 2445.7}, {\\\"date\\\": \\\"2026-08-12\\\", \\\"close\\\": 2349.7}, {\\\"date\\\": \\\"2026-08-13\\\", \\\"close\\\": 2375.0}, {\\\"date\\\": \\\"2026-08-14\\\", \\\"close\\\": 2361.0}, {\\\"date\\\": \\\"2026-08-17\\\", \\\"close\\\": 2313.2}, {\\\"date\\\": \\\"2026-08-18\\\", \\\"close\\\": 2280.0}, {\\\"date\\\": \\\"2026-08-19\\\", \\\"close\\\": 2289.0}, {\\\"date\\\": \\\"2026-08-20\\\", \\\"close\\\": 2298.0}, {\\\"date\\\": \\\"2026-08-21\\\", \\\"close\\\": 2302.0}, {\\\"date\\\": \\\"2026-08-24\\\", \\\"close\\\": 2284.1}, {\\\"date\\\": \\\"2026-08-25\\\", \\\"close\\\": 2296.2}, {\\\"date\\\": \\\"2026-08-26\\\", \\\"close\\\": 2270.0}, {\\\"date\\\": \\\"2026-08-27\\\", \\\"close\\\": 2248.4}, {\\\"date\\\": \\\"2026-08-28\\\", \\\"close\\\": 2342.0}, {\\\"date\\\": \\\"2026-08-31\\\", \\\"close\\\": 2399.3}, {\\\"date\\\": \\\"2026-09-01\\\", \\\"close\\\": 2363.9}]}\"\n      }\n    ]\n  },\n  \"valuation_multiples\": {\n    \"content\": [\n      {\n        \"type\": \"text\",\n        \"text\": \"{\\\"is_bank_equity\\\": false, \\\"pe_ratio\\\": 17.17, \\\"pe_ratio_formatted\\\": \\\"17.17\\\", \\\"forward_pe\\\": 14.55, \\\"forward_pe_formatted\\\": \\\"14.55\\\", \\\"pb_ratio\\\": 7.8, \\\"pb_ratio_formatted\\\": \\\"7.80\\\", \\\"ps_ratio\\\": 3.1, \\\"ps_ratio_formatted\\\": \\\"3.10\\\", \\\"ev_ebitda\\\": 11.3, \\\"ev_ebitda_formatted\\\": \\\"11.30\\\", \\\"dividend_yield\\\": 2.71, \\\"dividend_yield_formatted\\\": \\\"2.71%\\\", \\\"revenue_ttm\\\": 2758590070784.0, \\\"revenue_ttm_formatted\\\": \\\"Rs. 2.76 Lakh Cr\\\", \\\"gross_margin\\\": 0.4039, \\\"gross_margin_formatted\\\": \\\"40.39%\\\", \\\"operating_margin\\\": 0.2396, \\\"operating_margin_formatted\\\": \\\"23.96%\\\"}\"\n      }\n    ]\n  },\n  \"quarterly_financials\": {\n    \"content\": [\n      {\n        \"type\": \"text\",\n        \"text\": \"{\\\"quarterly_datapoints_count\\\": 5, \\\"data\\\": [{\\\"quarter\\\": \\\"Q1 FY2027\\\", \\\"revenue\\\": 722750000000.0, \\\"revenue_formatted\\\": \\\"Rs. 72,275.00 Cr\\\", \\\"net_income\\\": 133490000000.0, \\\"net_income_formatted\\\": \\\"Rs. 13,349.00 Cr\\\", \\\"revenue_growth_qoq\\\": 2.23, \\\"revenue_growth_qoq_formatted\\\": \\\"+2.23%\\\", \\\"revenue_growth_yoy\\\": null, \\\"profit_growth_qoq\\\": -2.69, \\\"profit_growth_qoq_formatted\\\": \\\"-2.69%\\\", \\\"profit_growth_yoy\\\": null, \\\"data_gap_note\\\": null}, {\\\"quarter\\\": \\\"Q4 FY2026\\\", \\\"revenue\\\": 706980000000.0, \\\"revenue_formatted\\\": \\\"Rs. 70,698.00 Cr\\\", \\\"net_income\\\": 137180000000.0, \\\"net_income_formatted\\\": \\\"Rs. 13,718.00 Cr\\\", \\\"revenue_growth_qoq\\\": 5.38, \\\"revenue_growth_qoq_formatted\\\": \\\"+5.38%\\\", \\\"revenue_growth_yoy\\\": null, \\\"profit_growth_qoq\\\": 28.72, \\\"profit_growth_qoq_formatted\\\": \\\"+28.72%\\\", \\\"profit_growth_yoy\\\": null, \\\"data_gap_note\\\": null}, {\\\"quarter\\\": \\\"Q3 FY2026\\\", \\\"revenue\\\": 670870000000.0, \\\"revenue_formatted\\\": \\\"Rs. 67,087.00 Cr\\\", \\\"net_income\\\": 106570000000.0, \\\"net_income_formatted\\\": \\\"Rs. 10,657.00 Cr\\\", \\\"revenue_growth_qoq\\\": null, \\\"revenue_growth_qoq_formatted\\\": \\\"data unavailable\\\", \\\"revenue_growth_yoy\\\": null, \\\"profit_growth_qoq\\\": null, \\\"profit_growth_qoq_formatted\\\": \\\"data unavailable\\\", \\\"profit_growth_yoy\\\": null, \\\"data_gap_note\\\": null}, {\\\"quarter\\\": \\\"Q2 FY2026 [Omitted in Feed]\\\", \\\"revenue\\\": null, \\\"revenue_formatted\\\": \\\"data unavailable\\\", \\\"net_income\\\": null, \\\"net_income_formatted\\\": \\\"data unavailable\\\", \\\"revenue_growth_qoq\\\": null, \\\"revenue_growth_qoq_formatted\\\": \\\"data unavailable\\\", \\\"revenue_growth_yoy\\\": null, \\\"profit_growth_qoq\\\": null, \\\"profit_growth_qoq_formatted\\\": \\\"data unavailable\\\", \\\"profit_growth_yoy\\\": null, \\\"data_gap_note\\\": \\\"Quarter Q2 FY2026 was omitted by upstream exchange data feed (yfinance).\\\"}, {\\\"quarter\\\": \\\"Q1 FY2026\\\", \\\"revenue\\\": 634370000000.0, \\\"revenue_formatted\\\": \\\"Rs. 63,437.00 Cr\\\", \\\"net_income\\\": 127600000000.0, \\\"net_income_formatted\\\": \\\"Rs. 12,760.00 Cr\\\", \\\"revenue_growth_qoq\\\": -1.62, \\\"revenue_growth_qoq_formatted\\\": \\\"-1.62%\\\", \\\"revenue_growth_yoy\\\": null, \\\"profit_growth_qoq\\\": 4.38, \\\"profit_growth_qoq_formatted\\\": \\\"+4.38%\\\", \\\"profit_growth_yoy\\\": null, \\\"data_gap_note\\\": null}]}\"\n      }\n    ]\n  },\n  \"technicals\": {\n    \"content\": [\n      {\n        \"type\": \"text\",\n        \"text\": \"{\\\"rsi_14\\\": 51.75, \\\"macd_line\\\": 8.7906, \\\"macd_signal\\\": 10.0527, \\\"macd_histogram\\\": -1.2621, \\\"volume_20d_avg\\\": 2658242.0, \\\"volume_trend\\\": \\\"falling\\\", \\\"support_level\\\": 2103.45, \\\"resistance_level\\\": 2525.85, \\\"breakout_status\\\": \\\"Range-bound within Support/Resistance Band\\\"}\"\n      }\n    ]\n  },\n  \"saas_metrics\": {\n    \"content\": [\n      {\n        \"type\": \"text\",\n        \"text\": \"{\\\"ticker\\\": \\\"TCS.NS\\\", \\\"sector\\\": \\\"Technology & SaaS\\\", \\\"rule_of_40_score\\\": 28.3, \\\"rule_of_40_formatted\\\": \\\"28.30%\\\", \\\"rule_of_40_status\\\": \\\"Healthy Growth/Profitability (25.0% - 40.0%)\\\", \\\"fcf_margin_pct\\\": 14.4, \\\"fcf_margin_formatted\\\": \\\"14.40%\\\", \\\"arr_run_rate\\\": 2891000000000.0, \\\"arr_run_rate_formatted\\\": \\\"Rs. 2.89 Lakh Cr\\\", \\\"revenue_per_employee\\\": 4719418.99, \\\"revenue_per_employee_formatted\\\": \\\"Rs. 47.19 Lakhs\\\", \\\"notes\\\": \\\"Rule of 40 combines YoY revenue growth (13.90%) with FCF margin (14.40%). Status: Healthy Growth/Profitability (25.0% - 40.0%).\\\"}\"\n      }\n    ]\n  },\n  \"fundamentals\": {\n    \"content\": [\n      {\n        \"type\": \"text\",\n        \"text\": \"{\\\"is_bank_equity\\\": false, \\\"eps_ttm\\\": 137.71, \\\"eps_ttm_formatted\\\": \\\"137.71\\\", \\\"debt_to_equity\\\": 0.1, \\\"debt_to_equity_formatted\\\": \\\"0.10x (10.21%)\\\", \\\"roe\\\": 0.4774, \\\"roe_formatted\\\": \\\"47.74%\\\", \\\"roce\\\": 0.5493, \\\"roce_formatted\\\": \\\"54.93%\\\", \\\"analyst_buy_count\\\": 25, \\\"analyst_hold_count\\\": 11, \\\"analyst_sell_count\\\": 5, \\\"analyst_target_mean\\\": 2464.93, \\\"analyst_target_mean_formatted\\\": \\\"2,464.93\\\", \\\"analyst_target_high\\\": 3480.0, \\\"analyst_target_high_formatted\\\": \\\"3,480.00\\\", \\\"analyst_target_low\\\": 1800.0, \\\"analyst_target_low_formatted\\\": \\\"1,800.00\\\", \\\"analyst_recommendation\\\": \\\"buy\\\"}\"\n      }\n    ]\n  }\n}"
+    },
+    {
+      "id": "t2",
+      "subject": "Gather ownership, board, and AML sweep",
+      "description": "Fetch ownership breakdown, board composition, and run structured AML sweep and adverse media search for Tata Consultancy Services.",
+      "status": "in_progress",
+      "assignee": "compliance-analyst",
+      "dependencies": [],
+      "attempt": 1,
+      "createdAt": 1788243974402,
+      "updatedAt": 1788243983860,
+      "kind": "work",
+      "attemptId": "631bdf4c-6559-44ad-94df-cccae6b05edd",
+      "reassigning": false,
+      "output": "Starting ownership, board, and AML sweep analysis for Tata Consultancy Services (TCS.NS)."
+    },
+    {
+      "id": "t3",
+      "subject": "Gather peer benchmarking and scraping",
+      "description": "Discover peer tickers, scrape Moneycontrol overview and ratios, and compute SaaS metrics for TCS.NS.",
+      "status": "claimed",
+      "assignee": "peer-analyst",
+      "dependencies": [],
+      "attempt": 1,
+      "createdAt": 1788243974413,
+      "updatedAt": 1788243975771,
+      "kind": "work",
+      "attemptId": "a4368ef8-773c-401c-b944-87b3e719cec7",
+      "reassigning": false
+    },
+    {
+      "id": "t4",
+      "subject": "Synthesis and Report Finalization",
+      "description": "Reflect on progress, validate data, plan report format, audit draft, finalize report, and render PDF.",
+      "status": "pending",
+      "dependencies": [
+        "t1",
+        "t2",
+        "t3"
+      ],
+      "attempt": 0,
+      "createdAt": 1788243974424,
+      "updatedAt": 1788243974424,
+      "kind": "work"
+    }
+  ],
+  "taskSeq": 4
+}

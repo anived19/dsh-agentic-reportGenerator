@@ -1,0 +1,56 @@
+{
+  "name": "tcs-research-team-1788243063039",
+  "id": "tcs-research-team-1788243063039",
+  "description": "Financial research and compliance report pipeline for Tata Consultancy Services (TCS.NS)",
+  "captainSessionId": "session-045e4618-c5c6-4449-aa03-e99f2e3da455",
+  "createdAt": 1788243063041,
+  "members": [
+    {
+      "id": "42e5dcc5-9032-4057-b11c-1270afc04b81",
+      "name": "financials-analyst",
+      "role": "Gather fundamentals, valuation multiples, quarterly financials, and technicals for TCS.NS",
+      "provider": "google",
+      "model": "gemini-3.5-flash-lite",
+      "joinedAt": 1788243063049,
+      "status": "removed"
+    },
+    {
+      "id": "12f483c9-739a-411a-af9d-2d786916ead5",
+      "name": "compliance-analyst",
+      "role": "Perform structured AML sweep, adverse media search, and ownership breakdown for TCS.NS",
+      "provider": "google",
+      "model": "gemini-3.5-flash-lite",
+      "joinedAt": 1788243063130,
+      "status": "removed"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "t1",
+      "subject": "Gather Financials & Valuation",
+      "description": "Fetch price snapshot, valuation multiples, fundamentals, quarterly financials, technicals, and Moneycontrol data for TCS.NS",
+      "status": "pending",
+      "dependencies": [],
+      "attempt": 1,
+      "createdAt": 1788243063151,
+      "updatedAt": 1788243069513,
+      "kind": "work",
+      "reassigning": false,
+      "handoffId": "8bd588d9-f1aa-44e2-9525-ea50c5011615"
+    },
+    {
+      "id": "t2",
+      "subject": "Gather Compliance & Ownership",
+      "description": "Run structured AML sweep, adverse media search, and get ownership breakdown for TCS.NS",
+      "status": "pending",
+      "dependencies": [],
+      "attempt": 0,
+      "createdAt": 1788243063164,
+      "updatedAt": 1788243069513,
+      "kind": "work",
+      "handoffId": "62bb2d9b-c3b0-4c29-944c-598b27fd9646",
+      "reassigning": false
+    }
+  ],
+  "taskSeq": 2
+}

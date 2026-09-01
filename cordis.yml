@@ -3,6 +3,7 @@
 # Applied with: npx @deepseek-ai/dsh --profile headless --patch cordis.yml "task"
 
 # ─── Configure Default Model to Google / Gemini via pi-ai ───
+# ─── Configure Default Model to Google / Gemini via pi-ai ───
 - id: agent-default-model
   config:
     provider: google
@@ -11,7 +12,7 @@
 # ─── Configure Tools to Code Mode (Programmatic Tool Calling) ───
 - id: tools
   config:
-    mode: code
+    mode: ptc
 
 # ─── Disable DeepSeek LLM, Web Search, Session Title ───
 - id: llm-deepseek
@@ -25,6 +26,7 @@
 - id: session-title-llm
   disabled: true
 - id: code-runtime
+  name: '@deepseek-ai/dsh-code-runtime-worker-thread'
   disabled: false
   config:
     maxWallMs: 1800000   # 30 min — 4 credit-scoring subagents run sequentially
@@ -51,11 +53,12 @@
         context — extract just the fields you need.
 
         HARD ISOLATION RULE: the run_code wall-clock budget does NOT pause for a
-        human response. NEVER call `mcp__finoscale__ask_user` (disambiguation) or
-        any step of the Analyst Review Gate inside a `run_code` program that also
-        does other work. Issue those as their OWN separate `run_code` call
-        containing nothing else, so a slow human response can never abort
-        unrelated in-flight data-gathering.
+        human response. NEVER call `mcp__finoscale__ask_user` (disambiguation),
+        `mcp__finoscale__fetch_annual_report` (file I/O), or
+        `mcp__finoscale__submit_for_analyst_review` (analyst gate) inside a
+        `run_code` program that also does other work. Issue those as their OWN
+        separate `run_code` call containing nothing else, so a slow human
+        response can never abort unrelated in-flight data-gathering.
 
       HARD RULES:
         - ZERO-TEXT PROTOCOL: never output conversational commentary, explanations,
@@ -65,6 +68,8 @@
           until `finalize_report` is reached.
         - You NEVER write final report prose or compute/invent numbers yourself —
           all figures must originate from deterministic MCP tool observations.
+        - If a tool returns `{"status": "success", "cached": True}`, it means the data
+          is safely stored in the global state. DO NOT retry the tool; consider the task complete.
 
       TOOL CATALOG (Available on finoscale MCP Server, called as
       `tools.mcp__finoscale__<name>(...)`):
@@ -148,6 +153,22 @@
 
       26. tools.mcp__finoscale__render_report_pdf(): Renders the final PDF report and returns its path.
 
+      27. tools.mcp__finoscale__fetch_annual_report(company_or_ticker): Downloads
+      the annual report PDF for a company. Sets credit_scoring_attempted flag.
+
+      28. tools.mcp__finoscale__get_category_text(category): Acquires the lock for
+      a credit-scoring category and returns its bounded text. Category must be
+      exactly 'Finances', 'Business & Management', 'Hygiene', or 'Banking'.
+
+      29. tools.mcp__finoscale__submit_category_result(category, result): Releases
+      the lock for a credit-scoring category and stores its ScoreCategoryResult.
+
+      30. tools.mcp__finoscale__compute_dynamic_scores(category, activeFBLimits, activeNFBLimits, agencyRating, adverseMediaFound, entityType): Normalizes dynamic
+      scores for edge cases (unrated, no banking facilities, clean adverse media).
+
+      31. tools.mcp__finoscale__submit_for_analyst_review(draft_summary): Submits
+      the draft for analyst review. Pauses execution until human responds.
+
       HARD RULES & DAG EXECUTION FLOW:
 
       1. RESOLUTION: If the ticker is not yet resolved, call
@@ -183,9 +204,28 @@
          your NEXT turn issues a fresh `run_code` call running the same loop again.
          Never poll one call per turn.
 
-      5. FINALIZATION: Once agent_teams_status shows every task terminal, gather
-         findings, call validate_data, then call
-         mcp__finoscale__render_report_pdf to produce the final PDF.
+      3.5. CREDIT SCORING (MANDATORY, SEQUENTIAL — separate from agent_teams):
+         Call `tools.mcp__finoscale__fetch_annual_report({ company_or_ticker })`
+         in its OWN `run_code` call (isolation rule — it does file I/O).
+         If found: call parse_report_text, then build_section_index.
+         For each category in [Finances, Business & Management, Hygiene, Banking]:
+           a. call `tools.mcp__finoscale__get_category_text({ category })` — if it
+              returns status: "already_completed", skip to the next category.
+           b. spawn the scoring subagent for that category (existing
+              tool-subagent-scoring provider), wait for it to call
+              submit_category_result({ category, result }), which unlocks the
+              next category.
+         When Banking is not applicable (entity has no active FB/NFB facilities),
+         the subagent should submit score_value: null with not_applicable_reason.
+         Once all categories are done, call
+         `tools.mcp__finoscale__submit_for_analyst_review({ draft_summary })`
+         in its OWN `run_code` call (isolation rule — it pauses for human).
+         Wait for APPROVED before proceeding to FINALIZATION.
+
+      5. FINALIZATION: Once agent_teams_status shows every task terminal AND
+         credit scoring is complete with analyst approval, call finalize_report
+         first (this locks and validates state), THEN call render_report_pdf
+         last, as your final action.
 
     rules:
       - name: "Entity Disambiguation"

@@ -1409,21 +1409,29 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         # Final validation logic
         from schemas import ScoreCategoryResult
         
-        required_categories = {"Finances", "Business & Management", "Hygiene"}
-        if state.sector_metrics and state.sector_metrics.sector.strip().lower() == "banking":
-            required_categories.add("Banking")
-            
-        completed_categories = {res.score_category.value for res in state.score_results}
-        
         if not state.credit_scoring_attempted:
             return {"error": "FATAL: Credit scoring was not attempted. You must run fetch_annual_report first to check for an annual report."}
 
+        required_categories = {"Finances", "Business & Management", "Hygiene"}
+        completed_categories = {res.score_category.value for res in state.score_results}
+        
+        # Banking is always attempted but may legitimately resolve to N/A
+        banking_results = [r for r in state.score_results if r.score_category.value == "Banking"]
+        banking_is_na = banking_results and banking_results[0].not_applicable_reason is not None
+        if "Banking" in completed_categories and not banking_is_na:
+            required_categories.add("Banking")
+        elif banking_is_na:
+            state.custom_metrics["banking_not_applicable"] = True
+
         if not required_categories.issubset(completed_categories):
-            if len(state.score_results) < 3:
+            if len([r for r in state.score_results if r.score_value is not None]) < 3:
                 return {"error": "FATAL: You MUST score at least Finances, Business & Management, and Hygiene using get_category_text's fallback data, even if the PDF is missing!"}
                 
             missing = required_categories - completed_categories
-            state.custom_metrics["credit_scoring_unavailable"] = True
+            if missing == {"Banking"} and banking_is_na:
+                state.custom_metrics["banking_not_applicable"] = True
+            else:
+                state.custom_metrics["credit_scoring_unavailable"] = True
             logger.warning(f"Credit scoring incomplete. Missing categories: {missing}. Proceeding with finalized report because minimum 3 fallback categories are met.")
 
         if state.ticker and (state.ticker.endswith(".NS") or state.ticker.endswith(".BO")):
@@ -1649,6 +1657,13 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
                 f"Score conservatively (score_value near 0.5) and state the data gap "
                 f"explicitly in raw_evidence_snippets."
             )
+
+        # Banking applicability check: if the fallback dossier says N/A,
+        # tell the subagent to submit score_value=null with a reason.
+        banking_na_hint = False
+        if category == "Banking" and source == "fallback_market_data":
+            if "N/A" in cat_text or "not a banking entity" in cat_text.lower():
+                banking_na_hint = True
             
         if os.environ.get("DSH_SUBAGENT_CONTEXT_DEBUG") == "1":
             try:
@@ -1656,8 +1671,15 @@ async def _dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
                 debug_file.write_text(json.dumps({"text": cat_text, "source": source}, indent=2), encoding="utf-8")
             except Exception as e:
                 logger.warning("Failed to write subagent context debug file: %s", e)
-                
-        return {"text": cat_text, "source": source}
+
+        result = {"text": cat_text, "source": source}
+        if banking_na_hint:
+            result["banking_na_hint"] = True
+            result["instruction"] = (
+                "This entity does not maintain conventional bank credit facilities. "
+                "Submit score_value: null with not_applicable_reason set to explain why."
+            )
+        return result
     elif name == "submit_category_result":
         category = arguments["category"]
         # Gate: reject invented category names
@@ -1858,6 +1880,8 @@ async def call_tool(name: str, arguments: dict[str, Any] | None) -> list[TextCon
     try:
         result = await _dispatch_tool(name, arguments)
         rec.result_summary = str(result)[:200]
+        if name == "render_report_pdf" and isinstance(result, dict):
+            rec.result_json = result
         if isinstance(result, dict) and "error" in result:
             rec.ok = False
             rec.error = str(result["error"])[:500]

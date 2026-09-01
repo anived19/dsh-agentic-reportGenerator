@@ -473,11 +473,18 @@ class PageCitedClaim(BaseModel):
 
 class ScoreCategoryResult(BaseModel):
     score_category: ScoreCategory
-    score_value: float
+    score_value: Optional[float] = None
     source: str = Field(default="annual_report", description="The data source used for this score (annual_report or aggregated_session_data)")
     comforts: list[PageCitedClaim] = Field(default_factory=list)
     discomforts: list[PageCitedClaim] = Field(default_factory=list)
     raw_evidence_snippets: str
+    not_applicable_reason: Optional[str] = Field(
+        default=None,
+        description=(
+            "Set when a category legitimately does not apply (e.g. Banking for "
+            "non-bank entities without FB/NFB facilities). Distinct from a scoring failure."
+        ),
+    )
 
     @field_validator("raw_evidence_snippets", mode="before")
     @classmethod
@@ -502,6 +509,10 @@ class ToolCallRecord(BaseModel):
     ok: bool
     error: Optional[str] = None
     reasoning_text: Optional[str] = None
+    result_json: Optional[dict] = Field(
+        default=None,
+        description="Full JSON result for tools whose output the driver needs to parse (e.g. render_report_pdf).",
+    )
 
 
 class ClarificationRequest(BaseModel):

@@ -542,7 +542,10 @@ def _check_and_scrub_numeric_drift(markdown_body: str, market_metrics: MarketMet
 def compute_average_score(score_results: list) -> float:
     if not score_results:
         return 0.0
-    return sum(r.score_value for r in score_results) / len(score_results)
+    scored = [r for r in score_results if r.score_value is not None]
+    if not scored:
+        return 0.0
+    return sum(r.score_value for r in scored) / len(scored)
 
 
 def run_chief_editor(
@@ -556,7 +559,8 @@ def run_chief_editor(
 ) -> str:
     """Synthesize validated market data + sentiment findings into the final report Markdown."""
     client = genai.Client(api_key=settings.gemini_api_key)
-    system_prompt = load_agent_prompt("chief_editor")
+    prompt_name = "credit_editor" if score_results else "chief_editor"
+    system_prompt = load_agent_prompt(prompt_name)
 
     effective_goal = editorial_goal or (report_spec.editorial_goal if report_spec else None)
     outlook_label = f"{market_metrics.outlook_months}-Month"
@@ -599,6 +603,22 @@ def run_chief_editor(
             "\n\nCREDIT SCORING RESULTS:\n"
             "MANDATORY RULE: Credit scoring could not be fully completed for this entity due to unavailable or un-parsable source data (e.g., missing annual report).\n"
             "If a 'Credit Scoring Summary' subsection is included, you MUST explicitly state that the scoring was unavailable and do NOT invent any scores."
+        )
+    elif market_metrics.custom_metrics and market_metrics.custom_metrics.get("banking_not_applicable"):
+        # Clean 3-pillar score — Banking is N/A, not missing
+        scoring_results = [r for r in score_results if r.score_value is not None]
+        avg_score = compute_average_score(scoring_results) if scoring_results else 0.0
+        score_context_block = f"\n\nCREDIT SCORING RESULTS (Average Score: {avg_score:.1f}/100):\n"
+        for res in score_results:
+            if res.not_applicable_reason:
+                score_context_block += f"- {res.score_category.value}: N/A — {res.not_applicable_reason}\n"
+            else:
+                comfort = res.comforts[0].claim if res.comforts else "N/A"
+                discomfort = res.discomforts[0].claim if res.discomforts else "N/A"
+                score_context_block += f"- {res.score_category.value}: {res.score_value:.0f}/100\n  Strength: {comfort}\n  Weakness: {discomfort}\n"
+        score_context_block += (
+            "\nBanking Score: N/A — entity does not maintain conventional bank credit facilities.\n"
+            "\nMANDATORY RULE: Include a 'Credit Scoring Summary' subsection. State the Banking N/A status explicitly."
         )
     elif score_results:
         avg_score = compute_average_score(score_results)
@@ -747,19 +767,30 @@ def render_credit_scoring_markdown(score_results: list) -> str:
     """
     Deterministic (no-LLM) Markdown table for the 4-pillar credit scoring scorecard.
     Renders whatever categories are present — does not require all 4.
+    Handles Banking N/A gracefully.
     """
     if not score_results:
         return ""
     lines = ["## Credit Scoring & Governance Scorecard", "", "| Category | Score | Verdict |", "|---|---|---|"]
     for r in score_results:
-        comfort = r.comforts[0].claim if r.comforts else ""
-        discomfort = r.discomforts[0].claim if r.discomforts else ""
-        verdict = comfort or discomfort or (r.raw_evidence_snippets[:150] if r.raw_evidence_snippets else "")
-        lines.append(f"| {r.score_category.value} | {r.score_value:.0f}/100 | {verdict} |")
-    avg = sum(r.score_value for r in score_results) / len(score_results)
-    lines.append("")
-    lines.append(f"**Average score: {avg:.1f}/100** across {len(score_results)} of 4 pillars evaluated.")
-    if len(score_results) < 4:
+        if r.not_applicable_reason:
+            lines.append(f"| {r.score_category.value} | N/A | {r.not_applicable_reason} |")
+        else:
+            comfort = r.comforts[0].claim if r.comforts else ""
+            discomfort = r.discomforts[0].claim if r.discomforts else ""
+            verdict = comfort or discomfort or (r.raw_evidence_snippets[:150] if r.raw_evidence_snippets else "")
+            score_val = f"{r.score_value:.0f}/100" if r.score_value is not None else "N/A"
+            lines.append(f"| {r.score_category.value} | {score_val} | {verdict} |")
+    scored = [r for r in score_results if r.score_value is not None]
+    if scored:
+        avg = sum(r.score_value for r in scored) / len(scored)
+        lines.append("")
+        lines.append(f"**Average score: {avg:.1f}/100** across {len(scored)} of 4 pillars evaluated.")
+    na_count = sum(1 for r in score_results if r.not_applicable_reason)
+    unevaluated = 4 - len(score_results)
+    if unevaluated > 0:
         missing = {"Finances", "Business & Management", "Hygiene", "Banking"} - {r.score_category.value for r in score_results}
         lines.append(f"*Not scored this run: {', '.join(sorted(missing))}.*")
+    if na_count > 0:
+        lines.append(f"*{na_count} pillar(s) marked N/A (not applicable to this entity).*")
     return "\n".join(lines)

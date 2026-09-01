@@ -1,0 +1,78 @@
+{
+  "name": "tcs-research-team-1788243069595",
+  "id": "tcs-research-team-1788243069595",
+  "description": "Financial research and compliance report pipeline for Tata Consultancy Services (TCS.NS)",
+  "captainSessionId": "session-045e4618-c5c6-4449-aa03-e99f2e3da455",
+  "createdAt": 1788243069597,
+  "members": [
+    {
+      "id": "4fda1468-43e3-44b7-86e3-71b0c0ec339e",
+      "name": "financials-analyst",
+      "role": "Gather fundamentals, valuation multiples, quarterly financials, and technicals for TCS.NS",
+      "provider": "google",
+      "model": "gemini-3.5-flash-lite",
+      "joinedAt": 1788243069603,
+      "status": "working"
+    },
+    {
+      "id": "61bf1991-ec26-4c7a-8150-776d3b4e38f6",
+      "name": "compliance-analyst",
+      "role": "Perform structured AML sweep, adverse media search, and ownership breakdown for TCS.NS",
+      "provider": "google",
+      "model": "gemini-3.5-flash-lite",
+      "joinedAt": 1788243069621,
+      "status": "working"
+    },
+    {
+      "id": "65ed3b97-d5a8-449e-9021-e5577e5c9070",
+      "name": "synthesis-analyst",
+      "role": "Synthesize report, reflect, validate, audit, finalize, and render PDF",
+      "provider": "google",
+      "model": "gemini-3.5-flash-lite",
+      "joinedAt": 1788243069639,
+      "status": "working"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "t1",
+      "subject": "Gather Financials & Valuation",
+      "description": "Fetch price snapshot, valuation multiples, fundamentals, quarterly financials, technicals, and Moneycontrol data for TCS.NS",
+      "status": "pending",
+      "assignee": "financials-analyst",
+      "dependencies": [],
+      "attempt": 0,
+      "createdAt": 1788243069658,
+      "updatedAt": 1788243069658,
+      "kind": "work"
+    },
+    {
+      "id": "t2",
+      "subject": "Gather Compliance & Ownership",
+      "description": "Run structured AML sweep, adverse media search, and get ownership breakdown for TCS.NS",
+      "status": "pending",
+      "assignee": "compliance-analyst",
+      "dependencies": [],
+      "attempt": 0,
+      "createdAt": 1788243069677,
+      "updatedAt": 1788243069677,
+      "kind": "work"
+    },
+    {
+      "id": "t3",
+      "subject": "Synthesize and Finalize Report",
+      "description": "Reflect on progress, validate data, plan report format, audit draft, finalize report, and render PDF",
+      "status": "pending",
+      "assignee": "synthesis-analyst",
+      "dependencies": [
+        "t1",
+        "t2"
+      ],
+      "attempt": 0,
+      "createdAt": 1788243069694,
+      "updatedAt": 1788243069694,
+      "kind": "work"
+    }
+  ],
+  "taskSeq": 3
+}

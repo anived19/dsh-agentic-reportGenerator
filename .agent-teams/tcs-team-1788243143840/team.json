@@ -1,0 +1,97 @@
+{
+  "name": "tcs-team-1788243143840",
+  "id": "tcs-team-1788243143840",
+  "description": "Comprehensive financial research and compliance report for TCS",
+  "captainSessionId": "session-f1829f5a-e0bf-4c0e-9b52-9e6835cf86db",
+  "createdAt": 1788243143846,
+  "members": [
+    {
+      "id": "7d2ed557-d8a9-4c60-bceb-11004154b090",
+      "name": "financial-analyst",
+      "role": "Financial statement and metrics specialist",
+      "provider": "google",
+      "model": "gemini-3.5-flash-lite",
+      "joinedAt": 1788243143860,
+      "status": "idle"
+    },
+    {
+      "id": "2b873bd5-852b-463b-9656-5506820b5d0b",
+      "name": "compliance-officer",
+      "role": "AML, adverse media, and regulatory screening specialist",
+      "provider": "google",
+      "model": "gemini-3.5-flash-lite",
+      "joinedAt": 1788243143954,
+      "status": "idle"
+    },
+    {
+      "id": "a326328a-2756-4d0d-8e45-8956d99b17b0",
+      "name": "market-researcher",
+      "role": "Technicals, valuation, and peer benchmarking specialist",
+      "provider": "google",
+      "model": "gemini-3.5-flash-lite",
+      "joinedAt": 1788243143994,
+      "status": "idle"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "t1",
+      "subject": "Gather fundamental and quarterly financials",
+      "description": "Fetch price snapshot, valuation multiples, fundamentals, quarterly financials, and SaaS/IT metrics for TCS.NS",
+      "status": "claimed",
+      "assignee": "financial-analyst",
+      "dependencies": [],
+      "attempt": 1,
+      "createdAt": 1788243144048,
+      "updatedAt": 1788243148037,
+      "kind": "work",
+      "attemptId": "4dbc75e1-a15d-4acb-8085-bb101d89c712",
+      "reassigning": false
+    },
+    {
+      "id": "t2",
+      "subject": "Run AML and adverse media screening",
+      "description": "Perform structured AML sweep across 8 databases and adverse media search for Tata Consultancy Services",
+      "status": "claimed",
+      "assignee": "compliance-officer",
+      "dependencies": [],
+      "attempt": 1,
+      "createdAt": 1788243144081,
+      "updatedAt": 1788243148627,
+      "kind": "work",
+      "attemptId": "39ea5298-176e-476f-b19d-b9abebd63029",
+      "reassigning": false
+    },
+    {
+      "id": "t3",
+      "subject": "Gather technicals and valuation peers",
+      "description": "Fetch technical indicators, ownership data, Moneycontrol scraper details, and peer tickers for TCS.NS",
+      "status": "claimed",
+      "assignee": "market-researcher",
+      "dependencies": [],
+      "attempt": 1,
+      "createdAt": 1788243144104,
+      "updatedAt": 1788243145534,
+      "kind": "work",
+      "attemptId": "deb687a4-55de-4dd1-8fa0-86d39302a6af",
+      "reassigning": false
+    },
+    {
+      "id": "t4",
+      "subject": "Synthesize and validate report data",
+      "description": "Run validate_data, reflect_on_progress, audit_draft, finalize_report, and render_report_pdf",
+      "status": "pending",
+      "assignee": "financial-analyst",
+      "dependencies": [
+        "t1",
+        "t2",
+        "t3"
+      ],
+      "attempt": 0,
+      "createdAt": 1788243144124,
+      "updatedAt": 1788243144124,
+      "kind": "work"
+    }
+  ],
+  "taskSeq": 4
+}
